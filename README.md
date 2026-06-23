@@ -15,12 +15,9 @@
 
 [![Release](https://img.shields.io/badge/release-v1.0.0-blue)](https://github.com/d0nizam/syncery.koplugin/releases)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-blue)](LICENSE)
-![Platform](https://img.shields.io/badge/platform-Kindle%20%7C%20Kobo%20%7C%20Android-lightgrey)
 ![Tests](https://img.shields.io/badge/tests-119%20passing-brightgreen)
 
 **Cross-device reading progress, annotations, metadata, and render-settings sync for KOReader.**
-
-<em><b>S</b>ynchronise <b>Y</b>our <b>N</b>otes, <b>C</b>onnect <b>E</b>-readers, <b>R</b>ead <b>Y</b>our way.</em>
 
 Syncery synchronises per-device reading data across all your KOReader devices — via Syncthing or cloud storage (Dropbox/WebDAV/FTP). A 3-way merge engine resolves concurrent annotation edits, a Trash Bin recovers deleted ones, and per-field merge keeps progress, metadata, and render settings in step across devices.
 
@@ -47,6 +44,8 @@ Syncery synchronises per-device reading data across all your KOReader devices �
 - [Settings reference](#settings-reference)
 - [Architecture overview](#architecture-overview)
 - [Troubleshooting](#troubleshooting)
+- [Acknowledgements](#acknowledgements)
+- [See also](#see-also)
 - [License](#license)
 
 ---
@@ -59,7 +58,7 @@ Syncery keeps your reading life in step across every KOReader device — self-ho
 - **Highlights, notes & bookmarks** — your annotations follow you everywhere. Deleted ones go to a **Trash Bin** you can restore from.
 - **Book details** — reading status (Reading / On hold / Finished), star rating, collections, your summary note, a custom title or author, and a handmade table of contents all stay in sync.
 - **Font & layout** — optionally sync per-book font and margins too. Off by default, since a size that's comfortable on a phone is wrong on a large e-reader.
-- **Your files, your transport** — everything travels as plain JSON over **Syncthing** (direct device-to-device) or your own **cloud** (Dropbox / WebDAV / FTP). Nothing is stored on a Syncery server, because there isn't one.
+- **Your files, your transport** — everything travels as plain JSON over **Syncthing** (direct device-to-device) or your own **cloud** (Dropbox / WebDAV / FTP). 
 - **Nothing lost when devices disagree** — edits made on different devices merge instead of overwriting each other. The one case that can truly clash — marking a book *Finished* on one device and *On hold* on another — is surfaced for you to resolve, never dropped silently.
 - **Works offline** — changes sync whenever your devices next reconnect; a device that's been offline for weeks keeps its place.
 - **See everything in one place** — a **Progress Browser** shows how far each device has read in every book (and jumps you to any of them), and an **Annotation Browser** gathers all your highlights and notes across your whole library.
@@ -70,15 +69,7 @@ For the exact fields and toggles, see [What Syncery syncs](#what-syncery-syncs);
 
 ## Supported devices
 
-Any device that runs a reasonably recent version of KOReader:
-
-| Platform | Notes |
-|----------|-------|
-| Kindle | Paperwhite, Oasis, Scribe, Basic |
-| Kobo | Libra, Clara, Elipsa |
-| PocketBook | Any KOReader-capable model |
-| Android | Phones and tablets |
-| Linux | x86_64 and aarch64 |
+Any device that runs a reasonably recent version of KOReader
 
 Syncery writes JSON files to disk — it does not manage its own daemon.
 Data replication is handled by the transport (Syncthing or Cloud), so any
@@ -103,8 +94,8 @@ device that can run KOReader and one of those transports can participate.
 
 ### Updating
 
-Once installed, Syncery can update itself: open **Syncery → Check for plugin
-updates** (below *Advanced*). It checks GitHub for a newer release, shows the
+Open **Syncery → Check for plugin
+updates**. It checks GitHub for a newer release, shows the
 notes, installs it in place, and offers to restart.
 
 ### Dependencies
@@ -113,8 +104,8 @@ The plugin itself has no runtime dependencies beyond KOReader. Each transport
 needs its backend:
 
 - **Syncthing** — a running Syncthing daemon with REST API access
-  (via the KOSyncthing+ plugin, Termux, or a desktop install).
-- **Cloud** — KOReader's built-in SyncService or hius07's "Cloud storage+"
+  (via the KOSyncthing+ plugin, another Syncthing plugin and Android app for Android devices).
+- **Cloud** — KOReader's "Cloud storage+"
   plugin with a configured service (Dropbox/WebDAV/FTP).
 
 ---
@@ -126,8 +117,7 @@ to 5 steps in a single centred panel:
 
 ### 1 — Choose a transport
 
-Pick how this device will sync: **Syncthing** (peer-to-peer, eventually
-consistent), **Cloud** (request-response, Dropbox/WebDAV/FTP), or **Decide
+Pick how this device will sync: **Syncthing** (peer-to-peer), **Cloud** (request-response, Dropbox/WebDAV/FTP), or **Decide
 later** (save your data locally now and pick a transport afterwards). If
 KOSyncthing+ is installed, the Syncthing row offers auto-discovery.
 
@@ -150,8 +140,6 @@ Paperwhite"). Shown in the status panel and in every merge record.
 ### 5 — Review and confirm
 
 A recap step shows all choices. Tap **Done** to save and start syncing.
-
-The wizard can be re-triggered from **Advanced** at any time.
 
 ---
 
@@ -260,7 +248,7 @@ Syncery                                         ← top-level entry in ☰ → T
 
 ## Transports
 
-Syncery writes plain-JSON files; a transport replicates them. Two are supported: **Syncthing** (peer-to-peer, eventually consistent) and **Cloud** (Dropbox/WebDAV/FTP via KOReader's SyncService or Cloud storage+, immediately consistent). Both implement the same contract — `id`, `push`, `status` — so the orchestrator drives them identically.
+Syncery writes plain-JSON files; a transport replicates them. Two are supported: **Syncthing** (peer-to-peer) and **Cloud** (Dropbox/WebDAV/FTP via KOReader's Cloud storage+ or Cloud storage, immediately consistent). Both implement the same contract — `id`, `push`, `status` — so the orchestrator drives them identically.
 
 <details>
 <summary><b>Per-transport detail + comparison</b></summary>
@@ -288,7 +276,7 @@ under **Transports → Configure Syncthing…**:
 
 ### Cloud
 
-Uses KOReader's built-in SyncService or hius07's Cloud storage+ plugin.
+Uses KOReader's Cloud storage+ plugin or if unavailable Cloud storage.
 Configured under **Transports → Cloud settings**:
 
 - **Destination** — pick or change where Syncery uploads its JSON files
