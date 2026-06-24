@@ -104,29 +104,29 @@ needs its backend:
 The first-run wizard (triggers automatically on first load) walks through up
 to 5 steps in a single centred panel:
 
-### 1 — Choose a transport
+### 1 - Choose a transport
 
 Pick how this device will sync: **Syncthing** (peer-to-peer), **Cloud** (request-response, Dropbox/WebDAV/FTP), or **Decide
 later** (save your data locally now and pick a transport afterwards). If
 KOSyncthing+ is installed, the Syncthing row offers auto-discovery.
 
-### 2 — Enter API key (Syncthing only)
+### 2 - Enter API key (Syncthing only)
 
 If you chose Syncthing *without* KOSyncthing+, an `InputDialog` asks for the
 Syncthing REST API key. This step is skipped otherwise.
 
-### 3 — Choose what to sync
+### 3 - Choose what to sync
 
 Toggle **progress** and **annotations**. Both are off by default — consent-first, so nothing syncs until you turn it on. (Finer
 controls — metadata, render settings, annotation sub-toggles — live in the menu
 under *What's synced* after setup.)
 
-### 4 — Name this device
+### 4 - Name this device
 
 Set a human-readable label that other devices will see (e.g. "Kindle
 Paperwhite"). Shown in the status panel and in every merge record.
 
-### 5 — Review and confirm
+### 5 - Review and confirm
 
 A recap step shows all choices. Tap **Done** to save and start syncing.
 
