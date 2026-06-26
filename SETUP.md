@@ -4,23 +4,27 @@
 
 *Get your KOReader devices syncing, step by step.*
 
+</div>
+
 This is a **task-oriented walkthrough**: how to get Syncery running across two
-or more devices.
+or more devices from scratch, including the part most guides skip — setting up
+the **transport** (Syncthing or cloud) underneath it.
 
 For the full feature/menu/settings reference, see [README.md](README.md).
-</div>
+
+---
 
 ## Contents
 
-- [How Syncery syncs](#how-syncery-syncs-in-one-minute)
+- [How Syncery syncs (in one minute)](#how-syncery-syncs-in-one-minute)
 - [Quick start](#quick-start)
-- [Step 1 - Install Syncery on every device](#step-1--install-syncery-on-every-device)
-- [Step 2 - Choose a transport](#step-2--choose-a-transport)
-- [Path A - Sync with Syncthing](#path-a--sync-with-syncthing)
-- [Path B - Sync with cloud storage](#path-b--sync-with-cloud-storage)
-- [Step 3 - Run the setup wizard](#step-3--run-the-setup-wizard)
-- [Step 4 - Make both devices agree (storage mode)](#step-4--make-both-devices-agree-storage-mode)
-- [Step 5 - First sync, and how to verify it](#step-5--first-sync-and-how-to-verify-it)
+- [Step 1 — Install Syncery on every device](#step-1--install-syncery-on-every-device)
+- [Step 2 — Choose a transport](#step-2--choose-a-transport)
+- [Path A — Sync with Syncthing](#path-a--sync-with-syncthing)
+- [Path B — Sync with cloud storage](#path-b--sync-with-cloud-storage)
+- [Step 3 — Run the setup wizard](#step-3--run-the-setup-wizard)
+- [Step 4 — Make both devices agree (storage mode)](#step-4--make-both-devices-agree-storage-mode)
+- [Step 5 — First sync, and how to verify it](#step-5--first-sync-and-how-to-verify-it)
 - [Exporting your highlights](#exporting-your-highlights)
 - [Troubleshooting](#troubleshooting)
 
@@ -35,8 +39,9 @@ Syncery doesn't talk to a server of its own and has no account. Instead:
 2. A **transport** you choose — **Syncthing** (peer-to-peer) or **cloud
    storage** (Dropbox / WebDAV / FTP) — replicates those JSON files between
    devices.
-3. When the files arrive, Syncery **merges** them so concurrent edits on
-   different devices combine instead of overwriting each other.
+3. When the files arrive, Syncery **merges** them into KOReader's own data with
+   a 3-way merge, so concurrent edits on different devices combine instead of
+   overwriting each other.
 
 So setting Syncery up is really two jobs: **(a)** get a transport moving files
 between your devices, and **(b)** point Syncery at it. This guide does both.
@@ -79,9 +84,9 @@ Syncery is a normal KOReader plugin. On **each** device:
 
 Syncery then lives under **`☰` → Tools → Syncery**. See
 [README → Installation](README.md#installation) for per-device paths
-(Kindle / Kobo / Android).
+(Kindle / Kobo / Android) and updating.
 
-> **Tip.** Install it on every device *first*, then configure. The wizard saves your
+> **Tip.** Install it everywhere *first*, then configure. The wizard saves your
 > data locally even before a transport is set up, so nothing is lost while you
 > get the other devices ready.
 
@@ -112,7 +117,7 @@ built around.
 
 ### What you need
 
-- Syncthing **running on every device**.
+- Syncthing **running on every device** (including each e-reader).
 - One **shared folder** that all those devices replicate.
 - Syncery **pointed at that folder** on each device.
 
@@ -124,7 +129,8 @@ device. The easiest route is the companion plugin below.
 [**KOSyncthing+**](https://github.com/d0nizam/kosyncthing_plus.koplugin) is a
 companion KOReader plugin that runs and controls Syncthing from inside
 KOReader. It handles the device-specific awkwardness for you and lets Syncery
-discover the connection automatically (no API key to copy). Install it like any plugin.
+discover the connection automatically (no API key to copy, no folder to
+hand-pick). Install it like any plugin.
 
 What it does depends on the device:
 
@@ -134,9 +140,9 @@ What it does depends on the device:
   Syncthing running — there's nothing else to install.
 - **Android e-readers** (Boox, etc.) — KOReader is itself an Android app, so
   Syncthing runs as a **separate Android app**. Install one of:
-  [**Syncthing-Fork**][https://github.com/researchxxl/syncthing-android]
-  or
-  **BasicSync** [https://github.com/chenxiaolong/BasicSync]. KOSyncthing+ then runs in *remote
+  [**Syncthing-Fork**](https://f-droid.org/packages/com.github.catfriend1.syncthingfork/)
+  (Catfriend1 — the widely used one, on F-Droid and Google Play) or
+  **BasicSync** (a lighter alternative). KOSyncthing+ then runs in *remote
   mode*: it bridges to that app and exposes it to Syncery. (On Android, starting
   and stopping the daemon is the Syncthing app's job, not KOSyncthing+'s.)
 
@@ -145,20 +151,22 @@ What it does depends on the device:
 > the **manual route** below — KOSyncthing+ mainly buys you auto-discovery and a
 > conflict badge.
 
-### Manual route
+### Manual route — run Syncthing yourself
 
 If you don't use KOSyncthing+, run Syncthing however you like and give Syncery
 the connection details by hand:
 
-- On **Kobo / Kindle**: use one of these Syncthing plugins
-  (
-  [https://github.com/bps/syncthing.koplugin]
+- On a **computer / NAS / Raspberry Pi**: install Syncthing from
+  [syncthing.net](https://syncthing.net/downloads/) and run it normally.
+- On **Kobo / Kindle**: use a community plugin that bundles the Syncthing binary
+  (for example
+  [arthurrump/syncthing.koplugin](https://github.com/arthurrump/syncthing.koplugin)
   or [jasonchoimtt/koreader-syncthing](https://github.com/jasonchoimtt/koreader-syncthing)).
-  These expose its web GUI at
+  These drop a Syncthing binary into a plugin folder and expose its web GUI at
   `https://127.0.0.1:8384`.
 - On **Android**: use Syncthing-Fork or BasicSync (above).
 
-You'll then enter that daemon's API key into Syncery (see *Point Syncery
+You'll then enter that daemon's URL and API key into Syncery (see *Point Syncery
 at the folder*).
 
 ### Pair your devices and share one folder
@@ -172,20 +180,25 @@ covers it in full; the short version:
 2. Find each device's **Device ID** under **Actions → Show ID** (a long
    `XXXXXXX-XXXXXXX-…` string, also shown as a QR code).
 3. On **both** devices, click **Add Remote Device** and enter the *other*
-   device's ID. (Repeat for every pair of
+   device's ID. After a minute they'll connect. (Repeat for every pair of
    devices.)
 4. On one device, **Add Folder** (or share an existing one), open its
    **Sharing** tab, and tick the other device(s). On the other device, accept
-   the folder when the prompt appears. Put the folder where your **Book metadata location**
-   is, in sdr mode can be **book folder** or **docsettings** or **hashdocsettings** or if you have
-   chosen so is Syncery Storage mode, the **synceryhash** folder
+   the folder when the prompt appears. Put the folder somewhere under your
+   user storage (on Kobo, under `/mnt/onboard`).
 
 After this you have **one folder that replicates across all your devices**. That
 folder is what Syncery will write into.
 
+> **Tip.** Syncthing only syncs while at least one peer is awake and reachable.
+> An always-on box (a home server, NAS, or Raspberry Pi running Syncthing) makes
+> a great hub so your e-reader and phone don't both have to be online at the
+> same moment.
+
 > **Warning.** Don't point Syncthing at your whole KOReader settings folder or
 > home directory — syncing configuration files across devices can cause
-> problems (e.g. two devices ending up with the same Device ID).
+> problems (e.g. two devices ending up with the same Device ID). Share a
+> *library / data* folder, not a config folder.
 
 ### Point Syncery at the folder (the glue)
 
@@ -209,17 +222,17 @@ That's it for the Syncery side.
 > write, idempotent, and safe even when the daemon is offline — you don't need
 > to do anything.
 
-### Worked example — a Kindle and an Android phone
+### Worked example — a Kobo and an Android phone
 
 1. **Phone:** install Syncthing-Fork and KOReader + Syncery + KOSyncthing+.
-   **Kindle:** install KOReader + Syncery + KOSyncthing+ (KOSyncthing+ downloads
+   **Kobo:** install KOReader + Syncery + KOSyncthing+ (KOSyncthing+ downloads
    the Syncthing binary on first run).
-2. In Syncthing-Fork (phone) and KOSyncthing+'s GUI (Kindle), grab each Device ID
+2. In Syncthing-Fork (phone) and KOSyncthing+'s GUI (Kobo), grab each Device ID
    and **Add Remote Device** on the other — wait for them to connect.
-3. On the phone, Syncthing GUI share a folder (say `Syncery`) with the Kobo and **accept**
+3. On the phone, create/share a folder (say `Books`) with the Kobo and **accept**
    it on the Kobo.
 4. On **both** devices: **Syncery → Transports → Configure Syncthing… → Choose
-   Syncthing folder → `Syncery`**.
+   Syncthing folder → `Books`**.
 5. Set both to the same storage mode ([Step 4](#step-4--make-both-devices-agree-storage-mode)),
    then sync.
 
@@ -282,7 +295,7 @@ Any WebDAV provider works. You'll need the WebDAV **URL**, a **username**, and a
 ### Add the account in KOReader, then point Syncery at it
 
 1. In KOReader's **File Browser**, open the **tools** menu (the wrench/tools
-   icon) → **Cloud storage+**, and **add an account** for your provider. KOReader
+   icon) → **Cloud storage**, and **add an account** for your provider. KOReader
    explains each field with info buttons as you go; for WebDAV you'll enter the
    URL, username, and password from above.
 2. In Syncery, open **`☰` → Tools → Syncery → Transports → Cloud settings**, and
@@ -299,7 +312,7 @@ Any WebDAV provider works. You'll need the WebDAV **URL**, a **username**, and a
 ## Step 3 — Run the setup wizard
 
 The first time Syncery loads, a short wizard walks you through up to four steps
-in a single panel.
+in a single panel. (You can re-run it any time from **Syncery → Advanced**.)
 
 1. **How do you want to sync?** — pick **Syncthing**, **Cloud**, or **Decide
    later**. If KOSyncthing+ is detected, the Syncthing row says **KOSyncthing+**
@@ -340,7 +353,20 @@ must use the same one**:
   *inside KOReader's own `.sdr` sidecar folder*, following your KOReader **Book
   metadata location**. This is tidy if you mostly use one device, **but for
   cross-device sync it only lines up if both devices also use the same KOReader
-  metadata location**.
+  metadata location** — and specifically KOReader's **hashdocsettings** mode
+  (which names the `.sdr` by a content hash, so it matches across devices
+  regardless of the book's path). With the other KOReader metadata modes, the
+  same book can land at different paths on different devices and won't merge.
+
+> **Recommendation.** For two or more devices, set **Synceryhash** on all of
+> them (**Syncery → Advanced → Storage mode → Synceryhash**, then **Migrate all
+> books to this storage mode…** if you already have data). It sidesteps the
+> KOReader metadata question entirely.
+>
+> If you prefer to keep the default **SDR** mode, set KOReader's **Book metadata
+> location** to **hashdocsettings** on every device — see KOReader's user guide
+> section *Book metadata storage options* for what that setting does and its
+> trade-offs.
 
 ---
 
@@ -395,7 +421,7 @@ for the full list.
   Syncthing → KOSyncthing+ integration status…**.
 - **Syncthing won't connect.** Confirm both Device IDs were added *and accepted
   on both sides*, both devices have Wi-Fi on, and (for internet sync) that at
-  least one peer is reachable.
+  least one peer is reachable. An always-on hub helps.
 - **PDF highlights + sync.** Writing highlights *into* a PDF changes the file,
   which changes its content hash — so a moved/edited PDF can lose its match in
   hash-based modes. Prefer KOReader's normal (sidecar) highlights when syncing.
