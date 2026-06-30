@@ -18,17 +18,17 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1263
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1269
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1276
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1282
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1291
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1297
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1304
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1310
 msgid " (any word)"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1263
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1269
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1276
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1282
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1291
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1297
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1304
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1310
 msgid " (phrase)"
 msgstr ""
 
@@ -44,20 +44,20 @@ msgid_plural "%d books are not on this device — nothing was moved or deleted f
 msgstr[0] ""
 msgstr[1] ""
 
-#: main.lua:3322
+#: main.lua:3331
 msgid "%d file was skipped — its book could not be identified, so it was left untouched."
 msgid_plural "%d files were skipped — their book could not be identified, so they were left untouched."
 msgstr[0] ""
 msgstr[1] ""
 
-#: main.lua:2564
+#: main.lua:2573
 msgid "%d new annotation from another device"
 msgid_plural "%d new annotations from another device"
 msgstr[0] ""
 msgstr[1] ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1111
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1150
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1139
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1178
 msgid "%d of %d"
 msgstr ""
 
@@ -65,7 +65,7 @@ msgstr ""
 msgid "%s is at %d%% — %s"
 msgstr ""
 
-#: main.lua:3357
+#: main.lua:3366
 msgid "(%d other file was skipped — its book could not be identified.)"
 msgid_plural "(%d other files were skipped — their book could not be identified.)"
 msgstr[0] ""
@@ -86,7 +86,7 @@ msgstr ""
 msgid "A to Z (by Date)"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1549
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1578
 msgid "About this view"
 msgstr ""
 
@@ -94,7 +94,7 @@ msgstr ""
 msgid "Actions for the book you're reading: undo the last jump, clear annotations, or fully reset it."
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2571
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2636
 msgid "Add Note"
 msgstr ""
 
@@ -106,7 +106,7 @@ msgstr ""
 msgid "After Title: "
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2044
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2073
 msgid "All Words"
 msgstr ""
 
@@ -114,7 +114,7 @@ msgstr ""
 msgid "All your KOReader metadata is already in the selected location (%s)."
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2560
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2625
 msgid "Annotation"
 msgstr ""
 
@@ -122,15 +122,15 @@ msgstr ""
 msgid "Annotation Browser"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2232
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2261
 msgid "Annotation Filters"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1306
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1334
 msgid "Annotations (%d)"
 msgstr ""
 
-#: main.lua:1818
+#: main.lua:1827
 msgid "Annotations are already synced — this only moves your reading position."
 msgstr ""
 
@@ -138,23 +138,23 @@ msgstr ""
 msgid "Another device's new position: %s"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2045
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2074
 msgid "Any Word"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1669
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1698
 msgid "Appearance"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1852
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1881
 msgid "Apply Book Filter"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1902
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1931
 msgid "Apply Chapter Filter"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1879
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1908
 msgid "Apply Tags Filter"
 msgstr ""
 
@@ -170,11 +170,11 @@ msgstr ""
 msgid "Ask first"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1578
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1607
 msgid "Author"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2539
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2604
 msgid "Author: "
 msgstr ""
 
@@ -185,7 +185,7 @@ msgid ""
 "These plugins sync over their OWN cloud storage -- not Syncery, and not Syncthing -- so this needs the Cloud storage+ plugin enabled and each plugin's cloud server set.  Off by default."
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1242
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1270
 msgid "B: "
 msgstr ""
 
@@ -197,7 +197,7 @@ msgstr ""
 msgid "Backfill, manage, and review your Syncery data."
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1579
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1608
 #: syncery_ui/progress_browser/init.lua:216
 #: syncery_ui/progress_browser/init.lua:379
 msgid "Book"
@@ -223,36 +223,36 @@ msgid ""
 "Ids are shortened and no credentials are included."
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1708
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1737
 msgid "Buttons - Left"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1707
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1736
 msgid "Buttons - Right"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1247
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1275
 msgid "B≠ "
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1218
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1246
 msgid "C: "
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2632
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2697
 #: syncery_ui/progress_browser/init.lua:171
 msgid "Cannot find book path."
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2050
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2079
 msgid "Case-Sensitive: Off"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2050
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2079
 msgid "Case-Sensitive: On"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1291
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1319
 msgid "Ch: "
 msgstr ""
 
@@ -272,27 +272,27 @@ msgstr ""
 msgid "Checking for plugin updates…"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1297
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1325
 msgid "Ch≠ "
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2215
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2244
 msgid "Clear All Filters"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1903
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1932
 msgid "Clear Chapter Filter"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1987
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2016
 msgid "Clear Filter"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1880
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1909
 msgid "Clear Tags Filter"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1827
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1856
 msgid "Clear filter"
 msgstr ""
 
@@ -300,14 +300,14 @@ msgstr ""
 msgid "Cloud storage isn't available in this KOReader build."
 msgstr ""
 
-#: main.lua:3503
+#: main.lua:3512
 msgid ""
 "Conflict-file integration is active.\n"
 "\n"
 "Syncery's own conflict files are hidden from the KOSyncthing+ badge — Syncery resolves them in RAM and deletes the extras."
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1678
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1707
 msgid "Content"
 msgstr ""
 
@@ -323,11 +323,11 @@ msgstr ""
 msgid "Could not check for updates."
 msgstr ""
 
-#: main.lua:3512
+#: main.lua:3521
 msgid "Could not register conflict-file patterns with KOSyncthing+.  Its API may have changed; Syncery still merges conflicts locally, but KOSyncthing+ may count them in its badge."
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2619
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2684
 #: syncery_ui/progress_browser/init.lua:199
 msgid "Could not resolve the sync-conflict."
 msgstr ""
@@ -336,7 +336,7 @@ msgstr ""
 msgid "Could not save the resolved status."
 msgstr ""
 
-#: main.lua:3312
+#: main.lua:3321
 msgid "Could not scan for orphaned sync files."
 msgstr ""
 
@@ -347,23 +347,23 @@ msgid ""
 "When a transport needs setup or hits an error, this row becomes tappable — tap to open that transport's setup and fix it.  Otherwise open the Progress Browser to see where your devices are."
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1229
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1257
 msgid "C≠ "
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1577
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1606
 msgid "Date"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1709
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1738
 msgid "Default"
 msgstr ""
 
-#: main.lua:3354
+#: main.lua:3363
 msgid "Delete these sync files permanently? No book files will be touched."
 msgstr ""
 
-#: main.lua:3770
+#: main.lua:3779
 msgid "Diagnostic info (copied to clipboard)"
 msgstr ""
 
@@ -379,7 +379,7 @@ msgstr ""
 msgid "Each is synced only when the master switch above is on, and stays off until you turn it on."
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2571
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2636
 msgid "Edit Note"
 msgstr ""
 
@@ -391,32 +391,32 @@ msgstr ""
 msgid "Everything about your reading position across devices: send this device's position, choose what happens when another device is ahead, or jump to a specific device on demand."
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2046
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2075
 msgid "Exact Phrase"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2070
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2099
 msgid "Exclude"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1990
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2141
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2019
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2170
 msgid "Exclude Color/Style"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2172
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2201
 msgid "Exclude Highlight Text"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2182
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2211
 msgid "Exclude Note Text"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2170
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2199
 msgid "Exclude by Highlight Text"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2180
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2209
 msgid "Exclude by Note Text"
 msgstr ""
 
@@ -424,41 +424,41 @@ msgstr ""
 msgid "Fetches the latest release, shows the notes, and installs it in place with a restart."
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1580
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1609
 msgid "Filename"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1537
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1566
 msgid "Filter"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1851
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2120
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1880
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2149
 msgid "Filter by Book"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1901
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2127
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1930
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2156
 msgid "Filter by Chapter"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1990
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2141
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2019
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2170
 msgid "Filter by Color/Style"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2166
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2168
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2195
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2197
 msgid "Filter by Highlight Text"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2176
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2178
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2205
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2207
 msgid "Filter by Note Text"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1878
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2134
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1907
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2163
 msgid "Filter by Tags"
 msgstr ""
 
@@ -499,7 +499,7 @@ msgstr ""
 msgid "Font Sizes"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1671
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1700
 msgid "Font Sizes..."
 msgstr ""
 
@@ -511,41 +511,41 @@ msgstr ""
 msgid "Font weight (boldness)"
 msgstr ""
 
-#: main.lua:3349
+#: main.lua:3358
 msgid "Found %d orphaned sync file. The book below was not found:"
 msgid_plural "Found %d orphaned sync files. The books below were not found:"
 msgstr[0] ""
 msgstr[1] ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2557
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2622
 msgid "From: "
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2565
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2630
 msgid "Go to bookmark"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2569
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2634
 msgid "Go to highlight"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2567
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2632
 msgid "Go to note"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1981
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2010
 msgid "Gray"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1265
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1293
 msgid "H: "
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1681
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1710
 msgid "Hide Duplicate Book Header: "
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2193
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2222
 msgid "Highlights Only (no notes)"
 msgstr ""
 
@@ -572,7 +572,7 @@ msgstr ""
 msgid "How this works…"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1271
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1299
 msgid "H≠ "
 msgstr ""
 
@@ -623,11 +623,11 @@ msgstr ""
 msgid "Jump to most recent position"
 msgstr ""
 
-#: main.lua:1773
+#: main.lua:1782
 msgid "Jumped to new position."
 msgstr ""
 
-#: main.lua:1872
+#: main.lua:1881
 msgid "Jumped to the newest position from another device."
 msgstr ""
 
@@ -639,7 +639,7 @@ msgstr ""
 msgid "KOSyncthing+ integration status…"
 msgstr ""
 
-#: main.lua:3813 syncery_update.lua:284 syncery_update.lua:331
+#: main.lua:3822 syncery_update.lua:284 syncery_update.lua:331
 msgid "Later"
 msgstr ""
 
@@ -697,19 +697,19 @@ msgid ""
 "Off by default — and even when on, NOTHING syncs until you enable individual settings below. Render settings are device-specific, so you choose exactly which ones follow you. Only reflowable documents (EPUB, FB2); changes take effect the next time you open the book."
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1672
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1701
 msgid "Max Lines Per Highlight: "
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1673
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1702
 msgid "Max Lines per Highlight"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1562
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1591
 msgid "Menu"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2612
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2677
 msgid ""
 "Merge this book's sync-conflict copies into its annotations and remove them?\n"
 "\n"
@@ -723,11 +723,11 @@ msgid ""
 "This also happens automatically the next time you open this book."
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2143
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2172
 msgid "Mode: Exclude"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2143
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2172
 msgid "Mode: Filter"
 msgstr ""
 
@@ -739,7 +739,7 @@ msgstr ""
 msgid "Most recent: %s on %s."
 msgstr ""
 
-#: main.lua:3414
+#: main.lua:3423
 msgid ""
 "Move %d annotation to Trash?\n"
 "\n"
@@ -762,11 +762,11 @@ msgid ""
 "Use this when you want clean annotations without losing where you are. Different from Full reset, which also clears progress. Restorable from the Trash Bin for 90 days."
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1278
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1306
 msgid "N: "
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1685
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1714
 msgid "Navigation"
 msgstr ""
 
@@ -775,11 +775,11 @@ msgstr ""
 msgid "Never jump"
 msgstr ""
 
-#: main.lua:2561
+#: main.lua:2570
 msgid "New annotations and font & layout from another device"
 msgstr ""
 
-#: main.lua:2567
+#: main.lua:2576
 msgid "New font & layout from another device"
 msgstr ""
 
@@ -798,7 +798,7 @@ msgstr ""
 msgid "No Syncthing API key yet — set one up first. Not needed with KOSyncthing+."
 msgstr ""
 
-#: main.lua:1865
+#: main.lua:1874
 msgid "No newer position from another device to jump to."
 msgstr ""
 
@@ -813,23 +813,23 @@ msgid ""
 "Open another book, jump to another device's position, then this item will become available again."
 msgstr ""
 
-#: main.lua:2971
+#: main.lua:2980
 msgid ""
 "No sync transport is set up yet.\n"
 "\n"
 "Open Transports to set up Syncthing or cloud storage, then Sync now can push your changes to your other devices."
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2621
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2686
 #: syncery_ui/progress_browser/init.lua:201
 msgid "No sync-conflict copies to resolve."
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2502
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2567
 msgid "No synced annotations for this book."
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2520
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2585
 msgid "No synced annotations found."
 msgstr ""
 
@@ -837,7 +837,7 @@ msgstr ""
 msgid "No synced reading progress found yet."
 msgstr ""
 
-#: main.lua:2895
+#: main.lua:2904
 msgid "Not synced (no cloud server set): %s"
 msgstr ""
 
@@ -849,22 +849,22 @@ msgstr ""
 msgid "Note: the \"Cloud storage+\" plugin isn't available — using built-in cloud sync (Dropbox / WebDAV only; FTP won't sync)."
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2195
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2224
 msgid "Notes: All"
 msgstr ""
 
-#: main.lua:2981
+#: main.lua:2990
 msgid ""
 "Nothing is turned on to sync yet.\n"
 "\n"
 "Open \"What's synced\" to enable reading progress, annotations, or book metadata."
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1284
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1312
 msgid "N≠ "
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1664
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1693
 msgid "Off"
 msgstr ""
 
@@ -872,7 +872,7 @@ msgstr ""
 msgid "Oldest First"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1664
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1693
 msgid "On"
 msgstr ""
 
@@ -888,7 +888,7 @@ msgstr ""
 msgid "Open"
 msgstr ""
 
-#: main.lua:1936
+#: main.lua:1945
 msgid "Open a book first to push its handmade table of contents."
 msgstr ""
 
@@ -896,7 +896,7 @@ msgstr ""
 msgid "Open the releases page in a browser?"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1075
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1103
 msgid "Page %1 of %2"
 msgstr ""
 
@@ -908,11 +908,11 @@ msgstr ""
 msgid "Page margins"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1717
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1746
 msgid "Pagination Style"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1687
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1716
 msgid "Pagination Style..."
 msgstr ""
 
@@ -1000,7 +1000,7 @@ msgstr ""
 msgid "Receive handmade TOC"
 msgstr ""
 
-#: main.lua:2593
+#: main.lua:2602
 msgid "Reload"
 msgstr ""
 
@@ -1008,7 +1008,7 @@ msgstr ""
 msgid "Remove this book from Syncery on this device"
 msgstr ""
 
-#: main.lua:3372
+#: main.lua:3381
 msgid "Removed %d orphaned sync file."
 msgid_plural "Removed %d orphaned sync files."
 msgstr[0] ""
@@ -1025,17 +1025,17 @@ msgid ""
 "Reading status, rating, and render settings stay. Only this device's annotations and progress are cleared; those from your other devices are kept."
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2613
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2678
 #: syncery_ui/progress_browser/init.lua:192
 msgid "Resolve"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2589
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2654
 #: syncery_ui/progress_browser/init.lua:269
 msgid "Resolve conflict"
 msgstr ""
 
-#: main.lua:3812 syncery_update.lua:283
+#: main.lua:3821 syncery_update.lua:283
 msgid "Restart"
 msgstr ""
 
@@ -1046,7 +1046,7 @@ msgid ""
 "Available for 60 seconds after each jump.  After that window closes, use \"Jump to another device now…\" (under Reading position) to jump manually."
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1218
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1246
 msgid "S: "
 msgstr ""
 
@@ -1068,25 +1068,25 @@ msgid ""
 "Already-synced books are skipped."
 msgstr ""
 
-#: main.lua:1280
+#: main.lua:1289
 msgid "Scanning books for data…"
 msgstr ""
 
-#: main.lua:1274
+#: main.lua:1283
 msgid ""
 "Scanning books for data…\n"
 "%d / %d"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1710
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1739
 msgid "Scrollbar"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1711
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1740
 msgid "Scrollbar + Buttons"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2070
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2099
 msgid "Search"
 msgstr ""
 
@@ -1112,7 +1112,7 @@ msgid ""
 "Written automatically as you read and whenever you close or suspend the reader."
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1724
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1753
 msgid "Set"
 msgstr ""
 
@@ -1124,8 +1124,8 @@ msgstr ""
 msgid "Set up how this device syncs: Syncthing or cloud storage."
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1545
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1694
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1574
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1723
 msgid "Settings"
 msgstr ""
 
@@ -1133,7 +1133,7 @@ msgstr ""
 msgid "Share my position from this device"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1680
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1709
 msgid "Show Book / Info Row: "
 msgstr ""
 
@@ -1146,11 +1146,11 @@ msgid ""
 "Works even while syncing is paused."
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1541
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1570
 msgid "Sort"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1609
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1638
 msgid "Sort By"
 msgstr ""
 
@@ -1158,7 +1158,7 @@ msgstr ""
 msgid "Space Between Notes"
 msgstr ""
 
-#: main.lua:2886 syncery_ui/menu/db_sync_section.lua:84
+#: main.lua:2895 syncery_ui/menu/db_sync_section.lua:84
 msgid "Statistics"
 msgstr ""
 
@@ -1175,7 +1175,7 @@ msgid ""
 "Tap to verify the integration is active, or to re-register after installing KOSyncthing+."
 msgstr ""
 
-#: main.lua:1824
+#: main.lua:1833
 msgid "Stay"
 msgstr ""
 
@@ -1249,12 +1249,12 @@ msgid ""
 "Margins are the most screen-dependent setting: a comfortable margin on a phone is wrong on a large e-reader. Best left off unless your devices have similar screen sizes."
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2623
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2688
 #: syncery_ui/progress_browser/init.lua:203
 msgid "Sync-conflict resolved."
 msgstr ""
 
-#: _meta.lua:3 main.lua:3826
+#: _meta.lua:3 main.lua:3835
 msgid "Syncery"
 msgstr ""
 
@@ -1273,7 +1273,7 @@ msgid ""
 "Installed version: %1"
 msgstr ""
 
-#: main.lua:3809
+#: main.lua:3818
 msgid ""
 "Syncery settings have been reset.\n"
 "\n"
@@ -1287,23 +1287,23 @@ msgid ""
 "Restart KOReader now to load it?"
 msgstr ""
 
-#: main.lua:3874
+#: main.lua:3883
 msgid "Syncery: annotation browser"
 msgstr ""
 
-#: main.lua:3864
+#: main.lua:3873
 msgid "Syncery: jump to another device"
 msgstr ""
 
-#: main.lua:3870
+#: main.lua:3879
 msgid "Syncery: progress browser"
 msgstr ""
 
-#: main.lua:3845
+#: main.lua:3854
 msgid "Syncery: undo last jump"
 msgstr ""
 
-#: main.lua:1116
+#: main.lua:1125
 #, lua-format
 msgid ""
 "Synceryhash storage mode enabled.\n"
@@ -1316,7 +1316,7 @@ msgid ""
 "Make sure Syncthing is configured to sync that folder so your files reach other devices."
 msgstr ""
 
-#: main.lua:1298
+#: main.lua:1307
 #, lua-format
 msgid ""
 "Annotation scan complete.\n"
@@ -1327,15 +1327,15 @@ msgid ""
 "Errors: %d"
 msgstr ""
 
-#: main.lua:1349
+#: main.lua:1358
 msgid "Syncery can't identify this book reliably, so it won't sync across your devices. This usually means the file couldn't be read fully."
 msgstr ""
 
-#: main.lua:1457
+#: main.lua:1466
 msgid "Syncery ran into an unexpected error while opening this book."
 msgstr ""
 
-#: main.lua:1458 syncery_ui/annotation_viewer/viewer_lifted.lua:2594
+#: main.lua:1467 syncery_ui/annotation_viewer/viewer_lifted.lua:2659
 #: syncery_ui/menu/maintenance_section.lua:136
 #: syncery_ui/progress_browser/init.lua:307 syncery_ui/status_panel.lua:354
 #: syncery_ui/status_ui/init.lua:223 syncery_ui/trash/init.lua:205
@@ -1353,11 +1353,11 @@ msgid ""
 "Now choose your folder from \"Choose Syncthing folder\"."
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1229
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1257
 msgid "S≠ "
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1253
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1281
 msgid "T: "
 msgstr ""
 
@@ -1373,7 +1373,7 @@ msgstr ""
 msgid "Text Margin: "
 msgstr ""
 
-#: main.lua:3475
+#: main.lua:3484
 msgid ""
 "The KOSyncthing+ plugin is not installed.\n"
 "\n"
@@ -1418,7 +1418,7 @@ msgstr ""
 msgid "This release has no downloadable archive."
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1551
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1580
 msgid ""
 "This shows each book's LAST SYNCED annotations, with the device each one came from.\n"
 "\n"
@@ -1433,7 +1433,7 @@ msgstr ""
 msgid "Title Size: "
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:682
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:704
 msgid "Today"
 msgstr ""
 
@@ -1453,7 +1453,7 @@ msgstr ""
 msgid "Turn on what you want. If you don't choose now or in the What's synced menu, nothing will sync."
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1258
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1286
 msgid "T≠ "
 msgstr ""
 
@@ -1461,56 +1461,56 @@ msgstr ""
 msgid "Undo last jump"
 msgstr ""
 
-#: main.lua:1550 syncery_ui/annotation_viewer/viewer_lifted.lua:460
+#: main.lua:1559 syncery_ui/annotation_viewer/viewer_lifted.lua:460
 #: syncery_ui/progress_browser/init.lua:229 syncery_ui/status_ui/init.lua:178
 #: syncery_ui/status_ui/init.lua:253
 msgid "Unknown"
 msgstr ""
 
-#: main.lua:1725
+#: main.lua:1734
 msgid "Auto-jumped to new position."
 msgstr ""
 
-#: main.lua:1726 main.lua:1774 syncery_ui/progress_browser/init.lua:158
+#: main.lua:1735 main.lua:1783 syncery_ui/progress_browser/init.lua:158
 #: syncery_ui/status_ui/init.lua:290
 msgid "Undo"
 msgstr ""
 
-#: main.lua:1883
+#: main.lua:1892
 msgid "Nothing to undo."
 msgstr ""
 
-#: main.lua:1903
+#: main.lua:1912
 msgid "Returned to previous position."
 msgstr ""
 
-#: main.lua:1946
+#: main.lua:1955
 msgid "Handmade TOC uses text positions that only work on reflowable documents (EPUB, FB2). This PDF or image document cannot share a TOC."
 msgstr ""
 
-#: main.lua:1963
+#: main.lua:1972
 msgid "No handmade table of contents found for this book."
 msgstr ""
 
-#: main.lua:1989
+#: main.lua:1998
 msgid "Handmade TOC will sync to other devices on next sync."
 msgstr ""
 
-#: main.lua:1994
+#: main.lua:2003
 msgid "Could not save handmade TOC for sync."
 msgstr ""
 
-#: main.lua:2086
+#: main.lua:2095
 #, lua-format
 msgid "Syncery: saved at page %d (%.0f%%)"
 msgstr ""
 
-#: main.lua:2443
+#: main.lua:2452
 #, lua-format
 msgid "Synced annotations (%d pulled, %d pushed)"
 msgstr ""
 
-#: main.lua:2448
+#: main.lua:2457
 #, lua-format
 msgid "Resolved %d annotation conflict(s)"
 msgstr ""
@@ -1523,124 +1523,124 @@ msgstr ""
 msgid "Update failed."
 msgstr ""
 
-#: main.lua:2630
+#: main.lua:2639
 msgid "Resolved progress conflicts"
 msgstr ""
 
-#: main.lua:1870 main.lua:2708 main.lua:2772 syncery_ui/jump_toast.lua:40
+#: main.lua:1879 main.lua:2717 main.lua:2781 syncery_ui/jump_toast.lua:40
 #: syncery_ui/progress_browser/init.lua:157
 #: syncery_ui/progress_browser/init.lua:282
 msgid "Another device"
 msgstr ""
 
-#: main.lua:2709 main.lua:2773 syncery_ui/menu/maintenance_section.lua:461
+#: main.lua:2718 main.lua:2782 syncery_ui/menu/maintenance_section.lua:461
 #: syncery_ui/wizard.lua:125 syncery_ui/wizard.lua:308
 msgid "Syncthing"
 msgstr ""
 
-#: main.lua:3225
+#: main.lua:3234
 msgid ""
 "No network connection.\n"
 "Scans will be retried automatically when you're back online."
 msgstr ""
 
-#: main.lua:3237
+#: main.lua:3246
 msgid "Transport not initialised."
 msgstr ""
 
-#: main.lua:3252
+#: main.lua:3261
 msgid "Quick sync triggered."
 msgstr ""
 
-#: main.lua:3254 main.lua:3270 main.lua:3276 main.lua:3290
+#: main.lua:3263 main.lua:3279 main.lua:3285 main.lua:3299
 msgid "Rescan all"
 msgstr ""
 
-#: main.lua:3268 main.lua:3289
+#: main.lua:3277 main.lua:3298
 msgid "Scan triggered."
 msgstr ""
 
-#: main.lua:3273
+#: main.lua:3282
 msgid "No Syncthing folders configured."
 msgstr ""
 
-#: main.lua:3304 syncery_migration/storage_mode.lua:453
+#: main.lua:3313 syncery_migration/storage_mode.lua:453
 msgid "Filesystem access unavailable."
 msgstr ""
 
-#: main.lua:3320
+#: main.lua:3329
 msgid "No orphaned sync files found."
 msgstr ""
 
-#: main.lua:3365
+#: main.lua:3374
 msgid "Delete"
 msgstr ""
 
-#: main.lua:3377
+#: main.lua:3386
 msgid "Orphan cleanup"
 msgstr ""
 
-#: main.lua:3396 syncery_ui/status_ui/init.lua:113
+#: main.lua:3405 syncery_ui/status_ui/init.lua:113
 #: syncery_ui/trash/init.lua:330
 msgid "No document open"
 msgstr ""
 
-#: main.lua:3409
+#: main.lua:3418
 msgid "No annotations to delete."
 msgstr ""
 
-#: main.lua:3418
+#: main.lua:3427
 msgid "Move to Trash"
 msgstr ""
 
-#: main.lua:3434
+#: main.lua:3443
 msgid "Syncery: could not save changes. Annotations not deleted."
 msgstr ""
 
-#: main.lua:3448 syncery_ui/booklist/actions.lua:242
+#: main.lua:3457 syncery_ui/booklist/actions.lua:242
 #: syncery_ui/menu/per_book_section.lua:153
 msgid "Delete all"
 msgstr ""
 
-#: main.lua:3452
+#: main.lua:3461
 #, lua-format
 msgid "%d annotation moved to Trash."
 msgid_plural "%d annotations moved to Trash."
 msgstr[0] ""
 msgstr[1] ""
 
-#: main.lua:3523
+#: main.lua:3532
 msgid "No recent activity recorded."
 msgstr ""
 
-#: main.lua:3528
+#: main.lua:3537
 msgid "Recent sync activity (newest first):"
 msgstr ""
 
-#: main.lua:3539
+#: main.lua:3548
 msgid "Activity log"
 msgstr ""
 
-#: main.lua:3784
+#: main.lua:3793
 msgid ""
 "Reset every Syncery setting on this device?\n"
 "\n"
 "The device's Syncery JSON files for books are NOT touched — only this device's local preferences."
 msgstr ""
 
-#: main.lua:3785 syncery_ui/booklist/actions.lua:228
+#: main.lua:3794 syncery_ui/booklist/actions.lua:228
 msgid "Reset"
 msgstr ""
 
-#: main.lua:3841
+#: main.lua:3850
 msgid "Syncery: sync now"
 msgstr ""
 
-#: main.lua:3852
+#: main.lua:3861
 msgid "Syncery: rescan all folders"
 msgstr ""
 
-#: main.lua:3858
+#: main.lua:3867
 msgid "Syncery: show sync status"
 msgstr ""
 
@@ -1677,11 +1677,11 @@ msgstr ""
 msgid "Use Syncery's cloud server"
 msgstr ""
 
-#: main.lua:2890
+#: main.lua:2899
 msgid "Vocab & Statistics not synced: enable the Cloud storage+ plugin."
 msgstr ""
 
-#: main.lua:2886 syncery_ui/menu/db_sync_section.lua:86
+#: main.lua:2895 syncery_ui/menu/db_sync_section.lua:86
 msgid "Vocabulary"
 msgstr ""
 
@@ -1696,27 +1696,27 @@ msgid ""
 "Either way you can still jump on demand from \"Jump to another device now…\" below.  Undo the last jump within 60 seconds from Menu → Syncery → This book → Undo last jump."
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2191
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2220
 msgid "With Notes Only"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2178
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2207
 msgid "Words in annotation notes…"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2168
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2197
 msgid "Words in highlighted text…"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2182
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2211
 msgid "Words to hide annotation notes…"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2172
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2201
 msgid "Words to hide highlighted text…"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:683
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:705
 msgid "Yesterday"
 msgstr ""
 
@@ -1849,8 +1849,8 @@ msgstr ""
 msgid "Migrate"
 msgstr ""
 
-#: main.lua:3379 syncery_ui/annotation_viewer/viewer_lifted.lua:1560
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2059
+#: main.lua:3388 syncery_ui/annotation_viewer/viewer_lifted.lua:1589
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2088
 #: syncery_ui/booklist/init.lua:273 syncery_ui/booklist/scan.lua:275
 #: syncery_ui/menu/_helpers.lua:252 syncery_ui/menu/annotations_section.lua:70
 #: syncery_ui/menu/annotations_section.lua:304
@@ -1967,7 +1967,7 @@ msgstr ""
 msgid "Tap to permanently delete the Syncery JSON files for this book."
 msgstr ""
 
-#: main.lua:1857 syncery_ui/menu/advanced_section.lua:98
+#: main.lua:1866 syncery_ui/menu/advanced_section.lua:98
 #: syncery_ui/menu/annotations_section.lua:219
 #: syncery_ui/menu/per_book_section.lua:147
 msgid "No document open."
@@ -2129,7 +2129,7 @@ msgstr ""
 msgid "• %d in %s"
 msgstr ""
 
-#: main.lua:3346
+#: main.lua:3355
 msgid "…and %d more"
 msgstr ""
 
@@ -2247,7 +2247,7 @@ msgid ""
 "Open this submenu to enable/disable annotation syncing entirely, or control each type individually."
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1308
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1336
 #: syncery_ui/menu/annotations_section.lua:533 syncery_ui/wizard.lua:165
 msgid "Annotations"
 msgstr ""
@@ -2707,11 +2707,11 @@ msgstr ""
 msgid "Next"
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1604
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1627
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1689
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:1712
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2224
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1633
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1656
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1718
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:1741
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2253
 #: syncery_ui/wizard_presenter.lua:231 syncery_ui/wizard_presenter.lua:263
 #: syncery_ui/wizard_presenter.lua:288 syncery_ui/wizard_presenter.lua:323
 msgid "Back"
@@ -2758,7 +2758,7 @@ msgid ""
 "No files are deleted from the cloud — only this device's connection setting."
 msgstr ""
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua:2060
+#: syncery_ui/annotation_viewer/viewer_lifted.lua:2089
 #: syncery_ui/menu/transport_section.lua:379
 msgid "Clear"
 msgstr ""
