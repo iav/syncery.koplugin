@@ -61,6 +61,22 @@ local WidgetContainer = require("ui/widget/container/widgetcontainer")
 
 local Screen = Device.screen
 
+-- Non-touch fallback serialization state (module-level: ONE slot for the whole
+-- plugin, shared by M.show_focusable and M.showExclusive). The touch path can
+-- stack two bars at once (lane 0 jump/undo + lane 1 reload); the focusable
+-- fallback is a modal ButtonDialog, so two at once -- or a reload/undo behind the
+-- modal ask-jump ConfirmBox -- would hide each other while both auto-close timers
+-- ran, expiring the hidden one unseen. So only ONE is live at a time; the rest
+-- queue FIFO and arm their timer only when they surface.
+local fb_active = false
+local fb_queue  = {}    -- FIFO: focusable specs OR { exclusive = run_fn }
+local fb_dialog = nil   -- the live focusable ButtonDialog (for teardown cleanup)
+local fb_timer  = nil   -- its scheduled auto-close timer fn (to unschedule on teardown)
+local fb_modal  = nil   -- the live foreign modal (ask-jump ConfirmBox) holding the slot
+local fb_tearing = false -- true while M.dismiss tears down: suppresses fb_drain so a
+                         -- close-callback can't resurrect a queued dialog mid-teardown
+local fb_drain          -- forward decl (defined with the queue helpers below)
+
 local VIEW_KEY_BASE = "syncery_action_bar"
 local ZONE_ID_BASE  = "syncery_action_bar_tap"
 local LANE_COUNT    = 2  -- lane 0 = jump/undo (bottom), lane 1 = reload (above)
@@ -297,6 +313,14 @@ end
 -- Only the SAME lane is preempted, so a lane-1 reload coexists with a lane-0
 -- jump bar (both visible, stacked) -- they are independent axes.
 function M.show(ui, spec)
+    -- Non-touch devices: the bar's button is a touch zone with no key path, so
+    -- it is unreachable (and an un-pressable button is alarming). Route EVERY
+    -- caller (jump/undo/reload, here and in the status panel / progress browser)
+    -- to the focusable, auto-dismissing variant instead. (The "ask" invite is
+    -- already handled separately as a ConfirmBox before reaching here.)
+    if not Device:isTouchDevice() then
+        return M.show_focusable(spec)
+    end
     if not (ui and ui.view and ui.registerTouchZones and ui.view.registerViewModule) then
         return
     end
@@ -363,6 +387,126 @@ function M.dismiss(ui)
     for lane = 0, LANE_COUNT - 1 do
         teardown(ui, "preempt", lane)
     end
+    -- Reset the non-touch fallback slot too: fb_* are module-level and outlive
+    -- the per-book plugin instance, so a focusable dialog still open (or a queued
+    -- entry) at document teardown would otherwise leave the slot stuck and make
+    -- every future fallback queue forever.
+    -- Order matters: empty the queue and raise fb_tearing BEFORE closing anything,
+    -- so a close-callback that reaches fb_drain can't surface a queued dialog
+    -- mid-teardown. Cancel the live auto-close timer too (else it fires later onto
+    -- a closed dialog), then close the live focusable dialog AND any foreign modal
+    -- (the ask-jump ConfirmBox) holding the slot.
+    fb_tearing = true
+    fb_queue = {}
+    fb_active = false
+    if fb_timer then
+        pcall(function() UIManager:unschedule(fb_timer) end)
+        fb_timer = nil
+    end
+    if fb_dialog then
+        pcall(function() UIManager:close(fb_dialog) end)
+        fb_dialog = nil
+    end
+    if fb_modal then
+        pcall(function() UIManager:close(fb_modal) end)
+        fb_modal = nil
+    end
+    fb_tearing = false
+end
+
+-- (queue state — fb_active / fb_queue / fb_dialog / fb_drain — declared at the
+-- module top so M.dismiss can reset it on document teardown.)
+
+fb_drain = function()
+    fb_active = false
+    if fb_tearing then return end   -- mid-teardown: never surface a queued dialog
+    local item = table.remove(fb_queue, 1)
+    if not item then return end
+    if item.exclusive then
+        item.exclusive()         -- a queued foreign modal (the ask-jump ConfirmBox)
+    else
+        M.show_focusable(item)   -- a queued timer dialog (undo / reload)
+    end
+end
+
+-- Non-touch fallback for the single-action bars (undo / reload). The bar above
+-- is touch-only -- its button is a touch zone with no key path -- so on a device
+-- with no touchscreen it is unreachable. Show a focusable, auto-dismissing
+-- dialog instead: the lone action button is focused, so ONE key press runs it;
+-- if left untouched it closes after `seconds` WITHOUT running the action --
+-- exactly the touch bar's timeout (the jump stays / the reload is skipped).
+-- spec = { text, button_label, on_action, on_timeout, seconds }
+function M.show_focusable(spec)
+    if fb_active then
+        -- Something is already on screen; queue this one. Its timer is NOT armed
+        -- until it surfaces (in a later fb_drain), so it can't expire unseen.
+        table.insert(fb_queue, spec)
+        return
+    end
+    fb_active = true
+    local ButtonDialog = require("ui/widget/buttondialog")
+    local dialog, timer
+    local done = false
+    local function finish(run_action)
+        if done then return end
+        done = true
+        if timer then UIManager:unschedule(timer) end
+        if fb_timer == timer then fb_timer = nil end
+        if fb_dialog == dialog then fb_dialog = nil end
+        UIManager:close(dialog)
+        if run_action then
+            if spec.on_action then pcall(spec.on_action) end
+        elseif spec.on_timeout then
+            pcall(spec.on_timeout)
+        end
+        fb_drain()  -- surface the next queued fallback, if any
+    end
+    dialog = ButtonDialog:new{
+        title       = spec.text,
+        title_align = "center",
+        -- Single button, focused by default on D-pad devices (FocusManager
+        -- paints the highlight on selected={1,1}) → reachable with one [Press].
+        -- Back / auto-timeout = no-op (e.g. the jump stays, the reload is skipped).
+        tap_close_callback = function() finish(false) end,
+        buttons     = { { { text = spec.button_label, callback = function() finish(true) end } } },
+    }
+    fb_dialog = dialog
+    timer = function() finish(false) end
+    UIManager:show(dialog)
+    UIManager:scheduleIn(spec.seconds or 12, timer)
+    fb_timer = timer  -- module-level handle so M.dismiss can unschedule on teardown
+    return dialog
+end
+
+-- Show a foreign modal (the ask-jump ConfirmBox) THROUGH the same single slot,
+-- so it never covers an active fallback (it queues instead) and reloads never
+-- expire behind it (they queue too). `show_fn(release)` must display the modal;
+-- call `release` from its close paths (ok AND cancel -- ConfirmBox:onClose runs
+-- cancel_callback on Back / tap-outside too, so the slot is always freed).
+-- `release(false)` frees the slot WITHOUT draining the queue, so an imminent
+-- post-jump undo can claim it before any queued reload (undo shown before reload).
+function M.showExclusive(show_fn)
+    local function run()
+        fb_active = true
+        local released = false
+        -- show_fn must RETURN the modal widget it displayed, so M.dismiss can
+        -- close it on document teardown (it lives outside this module otherwise).
+        fb_modal = show_fn(function(drain)
+            if released then return end
+            released = true
+            fb_modal = nil
+            if drain == false then
+                fb_active = false   -- let the next show_focusable (undo) take the slot
+            else
+                fb_drain()
+            end
+        end)
+    end
+    if fb_active then
+        table.insert(fb_queue, { exclusive = run })
+        return
+    end
+    run()
 end
 
 return M
