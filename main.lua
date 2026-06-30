@@ -88,6 +88,7 @@
 -- =============================================================================
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local UIManager       = require("ui/uimanager")
+local Device          = require("device")
 local InfoMessage     = require("ui/widget/infomessage")
 local ConfirmBox      = require("ui/widget/confirmbox")
 local InputDialog     = require("ui/widget/inputdialog")
@@ -1717,7 +1718,9 @@ function Syncery:_promptJump(opts)
         -- module + a button touch zone -- see syncery_ui/action_bar.lua),
         -- NOT a toast: a toast/window blocks page turns while it is up. The
         -- bar carries an [Undo] button for the 60s undo window (pre_jump_until)
-        -- and lets the reader keep paging the whole time.
+        -- and lets the reader keep paging the whole time.  ActionBar.show
+        -- self-degrades on non-touch to a focusable, auto-dismissing dialog
+        -- (the touch-zone button is otherwise unreachable).
         ActionBar.show(self.ui, {
             text         = _("Auto-jumped to new position."),
             button_label = _("Undo"),
@@ -1764,7 +1767,8 @@ function Syncery:_promptJump(opts)
             -- After a prompted ("ask") jump, confirm via the same non-blocking
             -- bottom action bar as "auto" above -- carrying an [Undo] button so
             -- the reader can step back within the undo window (pre_jump_until)
-            -- while still paging freely.
+            -- while still paging freely.  ActionBar.show self-degrades on
+            -- non-touch to a focusable, auto-dismissing dialog.
             ActionBar.show(self.ui, {
                 text         = _("Jumped to new position."),
                 button_label = _("Undo"),
@@ -1786,6 +1790,46 @@ function Syncery:_promptJump(opts)
         jump_opts.chapter = self:_resolveChapter(opts.r_xpath)
     else
         jump_opts.page = opts.r_page
+    end
+
+    -- Non-touch devices (e.g. Kindle 3, 5-way only): the action bar's [Jump] is
+    -- a touch zone with no key path, and its 12s auto-dismiss would expire
+    -- before a key user could act -- so the invite is both unreachable and too
+    -- brief. Use a focusable, no-timeout ButtonDialog with both choices labelled
+    -- instead. Touch (and hybrid) devices keep the non-blocking action bar.
+    --
+    -- [Jump] is FIRST so FocusManager lands on it (and is_enter_default makes a
+    -- bare [Press] jump): jumping is the 95% case, and a stray jump is recoverable
+    -- via Undo. [Stay] (and Back / tap-outside) is the safe non-action.
+    --
+    -- Route this modal through the fallback slot so it never covers an active
+    -- fallback (it queues) and a reload offer raised in the same checkRemote tick
+    -- queues behind it instead of expiring hidden. `release(false)` on Jump frees
+    -- the slot WITHOUT draining, so the post-jump undo (scheduled next tick by
+    -- jump()) claims it before any queued reload -- undo shown before reload.
+    -- ButtonDialog:onClose runs tap_close_callback on Back/tap-outside too, so the
+    -- slot is always freed.
+    if not Device:isTouchDevice() then
+        ActionBar.showExclusive(function(release)
+            local ButtonDialog = require("ui/widget/buttondialog")
+            local dlg
+            dlg = ButtonDialog:new{
+                title = JumpToast.message(jump_opts) .. "\n\n"
+                    .. _("Annotations are already synced — this only moves your reading position."),
+                title_align = "center",
+                dismissable = true,
+                buttons = { {
+                    { text = JumpToast.actionLabel(), is_enter_default = true,  -- "Jump" (default)
+                      callback = function() UIManager:close(dlg); release(false); jump() end },
+                    { text = _("Stay"),
+                      callback = function() UIManager:close(dlg); release(); stay() end },
+                } },
+                tap_close_callback = function() release(); stay() end,  -- Back / tap-outside = Stay
+            }
+            UIManager:show(dlg)
+            return dlg  -- handed to showExclusive so M.dismiss can close it on teardown
+        end)
+        return true
     end
 
     ActionBar.show(self.ui, {
@@ -2523,26 +2567,31 @@ function Syncery:_maybeOfferReload()
         text = _("New font & layout from another device")
     end
 
+    -- Shared action: reopen the document to apply the synced content.
+    local function do_reload()
+        -- If a position-jump bar is still showing alongside this reload
+        -- bar, hand its identity to the reopened document (see the
+        -- _pending_jump_handoff slot + checkRemote ── 3a).  reloadDocument
+        -- loses the pending jump (new instance) and its reopen re-stamps
+        -- our recency, so the reopened pick_jump_target would otherwise
+        -- rank US most-recent and drop the still-valid jump.  Covers
+        -- annotation, render, or both -- this is the one reload bar.
+        if self._shown_jump then _pending_jump_handoff = self._shown_jump end
+        if self.ui and self.ui.reloadDocument then
+            self.ui:reloadDocument()
+        end
+    end
+
     -- lane 1: the reload bar stacks ABOVE the jump bar (lane 0) and shows
     -- alongside it -- they are independent axes (content vs position), so there
     -- is no queuing/sequencing.  Both visible at once; the user acts on each
     -- freely (e.g. [Jump] adopts the position with no reopen, then [Reload]).
+    -- ActionBar.show self-degrades on non-touch to a focusable, auto-dismissing
+    -- dialog with [Reload] focused (the touch-zone button is unreachable there).
     ActionBar.show(self.ui, {
         text = text,
         button_label = _("Reload"),
-        on_action = function()
-            -- If a position-jump bar is still showing alongside this reload
-            -- bar, hand its identity to the reopened document (see the
-            -- _pending_jump_handoff slot + checkRemote ── 3a).  reloadDocument
-            -- loses the pending jump (new instance) and its reopen re-stamps
-            -- our recency, so the reopened pick_jump_target would otherwise
-            -- rank US most-recent and drop the still-valid jump.  Covers
-            -- annotation, render, or both -- this is the one reload bar.
-            if self._shown_jump then _pending_jump_handoff = self._shown_jump end
-            if self.ui and self.ui.reloadDocument then
-                self.ui:reloadDocument()
-            end
-        end,
+        on_action = do_reload,
         seconds = 12,  -- all action bars share a uniform 12s dwell
         lane = 1,
     })
