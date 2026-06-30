@@ -131,7 +131,7 @@ msgstr "Анотации (%d)"
 
 #: main.lua:1818
 msgid "Annotations are already synced — this only moves your reading position."
-msgstr ""
+msgstr "Анотациите вече са синхронизирани — това само премества позицията ви за четене."
 
 #: syncery_ui/menu/annotations_section.lua:653
 msgid "Another device's new position: %s"
@@ -1290,7 +1290,7 @@ msgstr ""
 
 #: main.lua:1824
 msgid "Stay"
-msgstr ""
+msgstr "Остани"
 
 #: syncery_ui/menu/annotations_section.lua:509
 msgid "Sync Reading Statistics and Vocabulary Builder across devices, through their own cloud sync.  Tap to choose which, and how it works."
@@ -1411,7 +1411,7 @@ msgstr ""
 
 #: main.lua:3874
 msgid "Syncery: annotation browser"
-msgstr ""
+msgstr "Syncery: Браузър за анотации"
 
 #: main.lua:3864
 msgid "Syncery: jump to another device"
@@ -1419,7 +1419,7 @@ msgstr "Syncery: скочи до друго устройство"
 
 #: main.lua:3870
 msgid "Syncery: progress browser"
-msgstr ""
+msgstr "Syncery: Браузър за прогрес"
 
 #: main.lua:3845
 msgid "Syncery: undo last jump"
