@@ -87,22 +87,62 @@ end
 -- position key from `list_deleted` (carried on `_trash_key`).  Flips
 -- `deleted` off and stamps a fresh UTC `datetime_updated` so the 3-way
 -- merge treats the restore as the newest change.
+--
+-- Delegates to restore_many (which does the same work) for a
+-- consistent batch interface — single-item restore is just the
+-- N=1 case.
 function Store.restore(book_file, ann_key, device_id, device_label)
     if not ann_key then return false end
+    local count = Store.restore_many(book_file, {ann_key},
+                                     device_id, device_label)
+    if count == false then return false end
+    return count > 0
+end
+
+
+-- Batch-restore multiple tombstones to live annotations in a single
+-- load -> flip -> save round-trip, instead of N sequential round-trips.
+--
+-- Returns the NUMBER of annotations actually restored (may be less than
+-- #ann_keys when some keys are already gone --- stale trash list), or
+-- FALSE when the shared state file could not be read or written.
+-- The caller distinguishes "nothing to do" (0) from "something failed"
+-- (false) so it can adjust the UI message / warning icon.
+--
+-- Why batch matters: the original loop called load_shared + save_shared
+-- per annotation.  Each call parses the full JSON file (decode),
+-- seralises it back to JSON (encode), and writes it to stable storage
+-- with an atomic temp+rename + fsync --- O(N) I/O per iteration.
+-- For N=1000 annotations at ~200 bytes each, that is 1000 full-file
+-- reads + 1000 full-file writes, escalating to minutes on e-ink flash.
+-- A single batch round-trip does one read + one write regardless of N.
+function Store.restore_many(book_file, ann_keys, device_id, device_label)
+    if not ann_keys or #ann_keys == 0 then return 0 end
+
     local state = AnnStateStore.load_shared(book_file)
     if not state or type(state.annotations) ~= "table" then
         return false
     end
-    local ann = state.annotations[ann_key]
-    if not ann then return false end
 
-    ann.deleted          = false
-    ann.datetime_updated = AnnTimeFormat.now()
-    ann.device_id        = device_id
-    ann.device_label     = device_label
+    local restored = 0
+    for _, key in ipairs(ann_keys) do
+        local ann = state.annotations[key]
+        if ann then
+            ann.deleted          = false
+            ann.datetime_updated = AnnTimeFormat.now()
+            ann.device_id        = device_id
+            ann.device_label     = device_label
+            restored = restored + 1
+        end
+    end
 
-    return AnnStateStore.save_shared(book_file, state)
-        and true or false
+    -- Nothing changed: skip the write entirely.
+    if restored == 0 then return 0 end
+
+    local ok = AnnStateStore.save_shared(book_file, state)
+    if not ok then return false end
+
+    return restored
 end
 
 
@@ -264,13 +304,18 @@ local function build_item_table(book_file, on_change_callback, update_menu)
                 ok_text     = _("Restore all"),
                 ok_callback = function()
                     local dev_id    = Util.get_device_id()
-                    local dev_label = Util.get_device_label and Util.get_device_label() or nil
-                    local count     = 0
+                    local dev_label = Util.get_device_label
+                                    and Util.get_device_label() or nil
+                    -- Extract keys from the deleted list so
+                    -- restore_many gets a flat key array, not
+                    -- the full annotation objects.
+                    local keys = {}
                     for __, ann in ipairs(deleted) do
-                        if Store.restore(book_file, ann._trash_key, dev_id, dev_label) then
-                            count = count + 1
-                        end
+                        table.insert(keys, ann._trash_key)
                     end
+                    local count = Store.restore_many(
+                        book_file, keys, dev_id, dev_label)
+                    if count == false then count = 0 end
                     local failed = #deleted - count
                     local msg = string.format(
                         _n("%d annotation restored.",
@@ -354,3 +399,4 @@ end
 
 
 return Trash
+
