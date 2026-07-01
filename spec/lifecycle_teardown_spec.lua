@@ -39,6 +39,8 @@ local function make_fake_plugin(opts)
         wake_wifi_for_sync       = opts.wake_wifi_for_sync,
         -- Suspend-push opt-in (default OFF).
         wake_wifi_on_suspend     = opts.wake_wifi_on_suspend,
+        -- Background close flush opt-in (default OFF).
+        background_close_flush   = opts.background_close_flush,
         -- Transport readiness (B): default configured so existing tests, which
         -- only flip use_cloud/use_syncthing, keep exercising the seam.
         _cloud_configured        = opts.cloud_configured ~= false,
@@ -65,6 +67,13 @@ local function make_fake_plugin(opts)
         record("_syncBookViaOrchestrator", state)
     end
     function plugin:_doCloudUpload(state)   record("_doCloudUpload",   state) end
+    -- Background close flush seam.  opts.bg_launched=true => backgrounded (the
+    -- sync _doCloudUpload must then be skipped); false/nil => could not
+    -- background (caller falls back to the sync path).
+    function plugin:_doCloudUploadBg(state)
+        record("_doCloudUploadBg", state)
+        return opts.bg_launched == true
+    end
     function plugin:_doTriggerScan(state, scan_opts)
         record("_doTriggerScan", state, scan_opts)
     end
@@ -1278,6 +1287,58 @@ do
 
     h.assert_equal(#queued, 1, "plain suspend: scan still deferred to nextTick")
     h.assert_nil(plugin:called("_doTriggerScan"), "plain suspend: scan not inline")
+end
+
+
+-- ---------------------------------------------------------------------------
+-- Background close flush (opt-in): on a DESTROYING flush with the toggle on,
+-- the cloud push is attempted in the background; when it launches, the
+-- synchronous _doCloudUpload is skipped.
+-- ---------------------------------------------------------------------------
+do
+    local plugin = make_fake_plugin{ background_close_flush = true, bg_launched = true }
+    local ui = make_fake_uimgr()
+    Teardown.flush(plugin, ui, fixed_now, nil, { destroying = true })
+
+    h.assert_true(plugin:called("_doCloudUploadBg") ~= nil,
+        "bg flush attempted on destroying close")
+    h.assert_nil(plugin:called("_doCloudUpload"),
+        "sync cloud upload SKIPPED once backgrounded")
+end
+
+-- Toggle on but background couldn't launch (fork unavailable / unreachable) →
+-- fall back to the synchronous push.
+do
+    local plugin = make_fake_plugin{ background_close_flush = true, bg_launched = false }
+    local ui = make_fake_uimgr()
+    Teardown.flush(plugin, ui, fixed_now, nil, { destroying = true })
+
+    h.assert_true(plugin:called("_doCloudUploadBg") ~= nil, "bg flush attempted")
+    h.assert_true(plugin:called("_doCloudUpload") ~= nil,
+        "falls back to sync upload when bg could not launch")
+end
+
+-- Toggle OFF (default) → never attempts the background path, sync as before.
+do
+    local plugin = make_fake_plugin{ background_close_flush = false }
+    local ui = make_fake_uimgr()
+    Teardown.flush(plugin, ui, fixed_now, nil, { destroying = true })
+
+    h.assert_nil(plugin:called("_doCloudUploadBg"),
+        "bg flush NOT attempted when toggle off")
+    h.assert_true(plugin:called("_doCloudUpload") ~= nil, "sync upload as before")
+end
+
+-- Background flush is close-only: a non-destroying (suspend) flush never
+-- backgrounds, even with the toggle on.
+do
+    local plugin = make_fake_plugin{ background_close_flush = true, bg_launched = true }
+    local ui = make_fake_uimgr()
+    Teardown.flush(plugin, ui, fixed_now, nil, { suspend = true })
+
+    h.assert_nil(plugin:called("_doCloudUploadBg"),
+        "bg flush NOT attempted on suspend (close-only)")
+    h.assert_true(plugin:called("_doCloudUpload") ~= nil, "suspend uses sync upload")
 end
 
 

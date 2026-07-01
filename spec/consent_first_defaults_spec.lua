@@ -101,4 +101,6 @@ do
         "consent: wake-Wi-Fi-on-close defaults OFF")
     h.assert_equal(default_for("syncery_wake_wifi_on_suspend"), "false",
         "consent: wake-Wi-Fi-on-sleep defaults OFF")
+    h.assert_equal(default_for("syncery_background_close_flush"), "false",
+        "consent: background-close-flush defaults OFF")
 end

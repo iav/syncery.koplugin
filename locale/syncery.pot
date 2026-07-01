@@ -823,6 +823,13 @@ msgstr ""
 msgid "No synced reading progress found yet."
 msgstr ""
 
+#: syncery_ui/menu/transport_section.lua
+msgid ""
+"Normally a cloud sync on close downloads, merges and uploads on the spot, which can freeze the screen for several seconds per file on slow hardware.  With this on, that work is handed to a background process instead, so closing a book returns immediately.\n"
+"\n"
+"Your changes are still merged safely (nothing is skipped); the upload just finishes a moment after the book has closed.  Only affects the cloud transport.  Off by default."
+msgstr ""
+
 #: main.lua
 msgid "Not synced (no cloud server set): %s"
 msgstr ""
@@ -1177,6 +1184,10 @@ msgid ""
 "Sync book status (Finished / Reading / On Hold), star rating, collection membership, custom book info, and handmade table of contents across devices.\n"
 "\n"
 "Open this submenu to toggle metadata syncing and its individual fields."
+msgstr ""
+
+#: syncery_ui/menu/transport_section.lua
+msgid "Sync cloud in the background on close"
 msgstr ""
 
 #: syncery_ui/menu/annotations_section.lua

@@ -234,7 +234,29 @@ function Teardown.flush(plugin, ui_manager, util_now, logger, opts)
                 if plugin._cloud_reachability then
                     pcall(function() plugin._cloud_reachability:warm_blocking() end)
                 end
-                plugin:_doCloudUpload(state)
+                -- Background close flush (opt-in): on a TERMINAL flush (close/
+                -- quit) run the cloud push in a forked subprocess so the UI is
+                -- not frozen by the synchronous SyncService transfer.  The child
+                -- is an independent process (copy-on-write snapshot), so Step 5
+                -- below may still tear the PARENT's transport down right away —
+                -- the child completes on its own and its poller reaps it; the
+                -- merged canonical it writes lands on disk (applied at the book's
+                -- next open).  Falls back to the synchronous push when it can't
+                -- background (fork unavailable / cloud unreachable / nothing to
+                -- push).  Non-terminal flushes (suspend/autosave) keep the sync
+                -- path unchanged.
+                local backgrounded = false
+                if opts.destroying and plugin.background_close_flush then
+                    backgrounded = plugin:_doCloudUploadBg(state)
+                end
+                if opts.destroying and logger and logger.dbg then
+                    logger.dbg("Syncery: bg-close-flush: destroying close, toggle="
+                        .. tostring(plugin.background_close_flush)
+                        .. " backgrounded=" .. tostring(backgrounded))
+                end
+                if not backgrounded then
+                    plugin:_doCloudUpload(state)
+                end
             end
 
             -- Step 4: tell Syncthing to scan our file.  The orchestrator's
