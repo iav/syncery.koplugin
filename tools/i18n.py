@@ -89,8 +89,9 @@ def strip_lua_comments(src):
 
     String literals (short '...' / "..." and long [[ ... ]] / [==[ ... ]==]) are
     preserved verbatim.  Comment bytes become spaces and embedded newlines are
-    kept, so byte offsets and line numbers stay identical to the original — which
-    is what lets the extractor report accurate file:line references.
+    kept, so byte offsets and line numbers stay identical to the original.
+    (Line numbers are tracked internally; the PO location comments themselves
+    are emitted file-only — see occurrences_for.)
     """
     out = []
     i, n = 0, len(src)
@@ -450,11 +451,22 @@ def load_po(path):
 
 
 def occurrences_for(msgid_refs, msgid):
-    """polib wants occurrences as (file, line) tuples."""
+    """polib wants occurrences as (file, line) tuples.
+
+    File-only location comments (equivalent to gettext --add-location=file):
+    emit the source file but drop the volatile line number, and dedup by
+    file so each file contributes exactly one stable reference. This keeps
+    the '#:' comments useful for translators (which file a string lives in)
+    while eliminating the PO diff churn that line numbers cause on every
+    code edit that shifts lines. Line numbers are never read at runtime
+    (the PO parser skips all '#' comment lines)."""
+    seen = set()
     out = []
     for ref in msgid_refs.get(msgid, []):
         f, _, l = ref.rpartition(":")
-        out.append((f, l))
+        if f not in seen:
+            seen.add(f)
+            out.append((f, ""))
     return out
 
 
