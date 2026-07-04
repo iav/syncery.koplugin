@@ -216,8 +216,8 @@ That's it for the Syncery side.
    the Syncthing binary on first run).
 2. In Syncthing-Fork (phone) and KOSyncthing+'s GUI (Kindle), grab each Device ID
    and **Add Remote Device** on the other — wait for them to connect.
-3. On the phone, Syncthing GUI share a folder (say `Syncery`) with the Kobo and **accept**
-   it on the Kobo.
+3. On the phone, Syncthing GUI share a folder (say `Syncery`) with the Kindle and **accept**
+   it on the Kindle.
 4. On **both** devices: **Syncery → Transports → Configure Syncthing… → Choose
    Syncthing folder → `Syncery`**.
 5. Set both to the same storage mode ([Step 4](#step-4--make-both-devices-agree-storage-mode)),
