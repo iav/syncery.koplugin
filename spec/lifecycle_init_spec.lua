@@ -60,8 +60,16 @@ local function make_recording_plugin(opts)
         -- and flip plugin.online_state mid-test to simulate WiFi returning.
         online_state        = (opts.online ~= false),
         _check_remote_calls = 0,
+
+        -- resume/open jump-window surface (feat/open-pull): recording stubs
+        -- for the session-window helpers + controllable pull predicates.
+        pull_ready          = opts.pull_ready or false,
+        pull_prompt         = opts.pull_prompt or false,
+        _rearm_calls        = 0,
+        _extend_calls       = 0,
+        _cloud_upload_calls = 0,
     }
-    function plugin:getCurrentState() return nil end  -- skip Steps 1–4
+    function plugin:getCurrentState() return opts.state end  -- default nil: skip Steps 1–4
     function plugin:_debouncedScan() self._debounced_calls = self._debounced_calls + 1 end
     function plugin:_autoSave(silent)
         self._autosave_calls = self._autosave_calls + 1
@@ -69,6 +77,11 @@ local function make_recording_plugin(opts)
     end
     function plugin:_isNetworkOnline() return self.online_state end
     function plugin:checkRemote() self._check_remote_calls = self._check_remote_calls + 1 end
+    function plugin:_rearmSessionJumpWindow() self._rearm_calls = self._rearm_calls + 1 end
+    function plugin:_extendSessionJumpWindow() self._extend_calls = self._extend_calls + 1 end
+    function plugin:_isCloudPullReady() return self.pull_ready end
+    function plugin:_isCloudPullPrompt() return self.pull_prompt end
+    function plugin:_doCloudUpload(_s) self._cloud_upload_calls = self._cloud_upload_calls + 1 end
 
     return plugin
 end
@@ -101,6 +114,11 @@ local function make_fake_uimgr()
             return nil
         end,
         pending_count = function() return #pending end,
+        delays = function()
+            local d = {}
+            for _, p in ipairs(pending) do d[#d + 1] = p.delay end
+            return d
+        end,
         -- Fire the OLDEST pending action (FIFO), so a test can step the
         -- offline re-probe loop one tick at a time and flip connectivity
         -- between fires.  A fired body may schedule a new action (the next
@@ -297,6 +315,142 @@ do
         "budget exhausted → no further probe armed")
     h.assert_equal(plugin._check_remote_calls, 0,
         "never checked because the network never returned")
+end
+
+
+-- ----------------------------------------------------------------------------
+-- on_resume × session jump window (feat/open-pull): the window is armed at
+-- WAKE (before reconnect polling), the countdown restarts on reconnect, the
+-- pull is scheduled on the WIDE predicate (config/state ready) while the
+-- check delay follows the NARROW one (first attempt can land soon).
+-- ----------------------------------------------------------------------------
+
+
+-- Online wake, pull ready AND promptly reachable: window armed once, countdown
+-- extended, pull slot (1 s) + late check fallback (20 s) armed; firing them
+-- runs the pull then the check.
+do
+    local plugin = make_recording_plugin{
+        online = true, pull_ready = true, pull_prompt = true,
+        state = { file = "/b.epub" },
+    }
+    local ui = make_fake_uimgr()
+    local lc = Lifecycle.new{ plugin = plugin, ui_manager = ui, util_now = fixed_now }
+    plugin._lifecycle = lc
+
+    lc:on_resume()
+    h.assert_equal(plugin._rearm_calls, 1,  "window armed exactly once at wake")
+    h.assert_equal(plugin._extend_calls, 1, "countdown restarted once online")
+    h.assert_equal(ui.pending_count(), 2,   "pull + late check both armed")
+    local d = ui.delays()
+    h.assert_equal(d[1], 1.0, "pull scheduled at 1 s")
+    h.assert_equal(d[2], 20,  "check waits out the 20 s fallback (pull will drive it)")
+
+    ui.fire_first()
+    h.assert_equal(plugin._cloud_upload_calls, 1, "firing the pull slot runs the cloud cycle")
+    ui.fire_first()
+    h.assert_equal(plugin._check_remote_calls, 1, "late fallback still checks")
+end
+
+
+-- Pull ready but reachability COLD (r5 regression pin): the pull must STILL
+-- be scheduled -- its backoff warms the probe -- while the check keeps the
+-- fast 2 s grace.
+do
+    local plugin = make_recording_plugin{
+        online = true, pull_ready = true, pull_prompt = false,
+        state = { file = "/b.epub" },
+    }
+    local ui = make_fake_uimgr()
+    local lc = Lifecycle.new{ plugin = plugin, ui_manager = ui, util_now = fixed_now }
+    plugin._lifecycle = lc
+
+    lc:on_resume()
+    h.assert_equal(ui.pending_count(), 2, "cold probe: pull STILL scheduled + check")
+    local d = ui.delays()
+    h.assert_equal(d[1], 1.0, "pull at 1 s regardless of the cold verdict")
+    h.assert_equal(d[2], 2,   "cold verdict keeps the fast 2 s check")
+end
+
+
+-- Pull not config-ready: no pull slot, fast check only; window still armed
+-- (Syncthing-delivered state can win it without any network).
+do
+    local plugin = make_recording_plugin{ online = true, pull_ready = false }
+    local ui = make_fake_uimgr()
+    local lc = Lifecycle.new{ plugin = plugin, ui_manager = ui, util_now = fixed_now }
+    plugin._lifecycle = lc
+
+    lc:on_resume()
+    h.assert_equal(plugin._rearm_calls, 1, "window armed even with no pull possible")
+    h.assert_equal(ui.pending_count(), 1,  "only the check is armed")
+    h.assert_equal(ui.delays()[1], 2,      "and it keeps the fast grace")
+end
+
+
+-- Offline wake: the window is armed IMMEDIATELY (first tick, before the
+-- reconnect polling), exactly once across the whole re-probe loop; the
+-- countdown restarts only when connectivity returns.
+do
+    local plugin = make_recording_plugin{ online = false, pull_ready = true, pull_prompt = true }
+    local ui = make_fake_uimgr()
+    local lc = Lifecycle.new{ plugin = plugin, ui_manager = ui, util_now = fixed_now }
+    plugin._lifecycle = lc
+
+    lc:on_resume()
+    h.assert_equal(plugin._rearm_calls, 1,  "armed at wake, before any reconnect probe")
+    h.assert_equal(plugin._extend_calls, 0, "no countdown restart while offline")
+
+    ui.fire_first()                    -- probe: still offline → re-probe armed
+    h.assert_equal(plugin._rearm_calls, 1, "recursive probes do NOT re-arm (snapshot stays pre-wake)")
+
+    plugin.online_state = true
+    ui.fire_first()                    -- probe: online now → extend + pull + check
+    h.assert_equal(plugin._rearm_calls, 1,  "still exactly one arm for the whole resume")
+    h.assert_equal(plugin._extend_calls, 1, "countdown restarted on reconnect")
+end
+
+
+
+-- Wake-on-open wiring: the wake helper (when the plugin provides one) is
+-- invoked exactly once, on the FIRST resume tick — offline or online — and
+-- never again from the re-probe loop.  Older plugin objects without the
+-- helper are tolerated (guarded call).
+do
+    local plugin = make_recording_plugin{ online = false, pull_ready = true }
+    plugin._wake_calls = 0
+    function plugin:_wakeWifiForOpenPull() self._wake_calls = self._wake_calls + 1 end
+    local ui = make_fake_uimgr()
+    local lc = Lifecycle.new{ plugin = plugin, ui_manager = ui, util_now = fixed_now }
+    plugin._lifecycle = lc
+
+    lc:on_resume()
+    h.assert_equal(plugin._wake_calls, 1, "wake attempted on the first tick (offline)")
+    ui.fire_first()                    -- re-probe (still offline)
+    h.assert_equal(plugin._wake_calls, 1, "re-probes never re-trigger the wake")
+end
+
+do
+    local plugin = make_recording_plugin{ online = true, pull_ready = true, pull_prompt = true }
+    plugin._wake_calls = 0
+    function plugin:_wakeWifiForOpenPull() self._wake_calls = self._wake_calls + 1 end
+    local ui = make_fake_uimgr()
+    local lc = Lifecycle.new{ plugin = plugin, ui_manager = ui, util_now = fixed_now }
+    plugin._lifecycle = lc
+
+    lc:on_resume()
+    h.assert_equal(plugin._wake_calls, 1,
+        "wake helper called once even when already online (it no-ops inside)")
+end
+
+do
+    -- No helper on the plugin object: the guarded call must not raise.
+    local plugin = make_recording_plugin{ online = true }
+    local ui = make_fake_uimgr()
+    local lc = Lifecycle.new{ plugin = plugin, ui_manager = ui, util_now = fixed_now }
+    plugin._lifecycle = lc
+    local ok = pcall(function() lc:on_resume() end)
+    h.assert_true(ok, "resume tolerates a plugin without _wakeWifiForOpenPull")
 end
 
 

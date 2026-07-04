@@ -144,6 +144,12 @@ local RESUME_RECHECK_POLL_DELAY = 3
 local RESUME_RECHECK_MAX_TRIES  = 10
 local RESUME_RECHECK_GRACE      = 2
 
+-- When a resume pull is expected, the remote check waits like the open path
+-- does (main.lua onReaderReady): the pull drives the early check via
+-- on_reconciled/_post_pull_check, and this is only the late fallback — a 2 s
+-- check would race the pull and hold a stale jump prompt (codex).
+local RESUME_RECHECK_PULL_FALLBACK = 20
+
 
 --- onResume — device woke from suspend.  KOReader broadcasts Resume to
 --- plugins (frontend/device/generic/device.lua), exactly as it broadcasts
@@ -161,10 +167,55 @@ function Lifecycle:on_resume(tries_left)
     local plugin = self._plugin
     if plugin.destroyed then return end
 
+    -- Arm the jump window IMMEDIATELY on the first resume tick, BEFORE the
+    -- reconnect polling below: the baseline snapshot must predate any
+    -- post-wake autosave -- taken later it would hide a peer that advanced
+    -- while we slept (codex).  Guarded: test fakes and older plugin objects
+    -- may lack the helper.  tries_left==nil marks the first (non-recursive)
+    -- call.
+    if tries_left == nil and plugin._rearmSessionJumpWindow then
+        plugin:_rearmSessionJumpWindow()
+        -- Wake-on-open: woke OFFLINE -> raise Wi-Fi + rerun instead of only
+        -- passively polling.  Slot-coalesced with the online branch's pull.
+        if plugin._wakeWifiForOpenPull then
+            plugin:_wakeWifiForOpenPull()
+        end
+    end
+
     if plugin:_isNetworkOnline() then
-        self:schedule("_check_remote_action", RESUME_RECHECK_GRACE, function()
-            if not plugin.destroyed then plugin:checkRemote() end
-        end)
+        -- Resume is an OPEN, minus the re-render: fire the open-moment cloud
+        -- pull, so a peer that advanced while we slept can offer its position
+        -- within the window (onReaderReady wires the same pair on a real
+        -- open).  The window's countdown restarts NOW -- reconnect polling
+        -- may have eaten seconds of it while the baseline snapshot had to be
+        -- taken back at wake.
+        -- Deliberately NO "too soon" debounce: waking the device is a user
+        -- action and the Wi-Fi gate already bounds the cost; normal life
+        -- wakes are sparse, and someone flipping sleep/wake rapidly is
+        -- usually TESTING sync -- second-guessing them with hidden cleverness
+        -- only breeds false assumptions (iav).
+        if plugin._extendSessionJumpWindow then
+            plugin:_extendSessionJumpWindow()
+        end
+        -- Pull scheduled on the WIDE predicate (config/state ready -- its
+        -- backoff warms a cold probe); the check delay on the NARROW one
+        -- (first attempt can actually land soon), codex r5.
+        local pull_expected = plugin._isCloudPullReady and plugin:_isCloudPullReady()
+        local pull_prompt   = plugin._isCloudPullPrompt and plugin:_isCloudPullPrompt()
+        if pull_expected then
+            self:schedule("_open_cloud_pull", 1.0, function()
+                if plugin.destroyed then return end
+                local s = plugin:getCurrentState()
+                if s then plugin:_doCloudUpload(s) end
+            end)
+        end
+        -- Same sequencing as the open path: with a pull in flight the early
+        -- check comes from _post_pull_check; this is only the late fallback.
+        self:schedule("_check_remote_action",
+            pull_prompt and RESUME_RECHECK_PULL_FALLBACK or RESUME_RECHECK_GRACE,
+            function()
+                if not plugin.destroyed then plugin:checkRemote() end
+            end)
         return
     end
 

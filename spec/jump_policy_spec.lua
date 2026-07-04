@@ -330,3 +330,78 @@ do
     h.assert_nil(JumpPolicy.pick_jump_target(entries, "EREADER"),
         "B9: exact-ts tie resolving to us (by percent tiebreak) -> nil")
 end
+
+
+-- ----------------------------------------------------------------------------
+-- pick_jump_target — session recency baseline (open-pull delivery).  Our own
+-- autosave stamps our entry "most recent" ~0.5 s after open, BEFORE the
+-- open-moment cloud pull lands; ranking ourselves by the SESSION-START
+-- timestamp lets a peer that read after our previous session count as
+-- forward.
+-- ----------------------------------------------------------------------------
+
+-- Freshly downloaded book: no prior own entry -> baseline 0.  Our live entry
+-- (just autosaved, ts=1000) would win the legacy ranking; with the baseline
+-- the peer (ts=900, older than our autosave but newer than "never") is
+-- offered.
+do
+    local entries = {
+        EREADER = { revision = 1, percent = 0.001, timestamp = 1000 }, -- us, just autosaved
+        PHONE   = { revision = 7, percent = 0.42,  timestamp = 900  }, -- peer, read earlier today
+    }
+    h.assert_nil(JumpPolicy.pick_jump_target(entries, "EREADER"),
+        "baseline: legacy ranking (no baseline) suppresses the peer")
+    local best, id = JumpPolicy.pick_jump_target(entries, "EREADER", 0)
+    h.assert_equal(id, "PHONE", "baseline 0 (fresh book): peer offered")
+    h.assert_equal(best.percent, 0.42, "baseline: the peer's REAL entry is returned")
+end
+
+-- Peer read AFTER our previous session (baseline 500) but BEFORE our
+-- open-moment autosave (live ts 1000) -> forward, offered.
+do
+    local entries = {
+        EREADER = { revision = 3, percent = 0.30, timestamp = 1000 },
+        PHONE   = { revision = 5, percent = 0.55, timestamp = 800  },
+    }
+    local _, id = JumpPolicy.pick_jump_target(entries, "EREADER", 500)
+    h.assert_equal(id, "PHONE", "baseline: peer newer than our PREVIOUS session -> offered")
+end
+
+-- Peer older than our previous session too -> still backward, suppressed.
+do
+    local entries = {
+        EREADER = { revision = 3, percent = 0.30, timestamp = 1000 },
+        PHONE   = { revision = 5, percent = 0.55, timestamp = 400  },
+    }
+    h.assert_nil(JumpPolicy.pick_jump_target(entries, "EREADER", 500),
+        "baseline: peer older than our previous session -> suppressed")
+end
+
+-- nil baseline = legacy behavior (rank by our live timestamp).
+do
+    local entries = {
+        EREADER = { revision = 1, percent = 0.30, timestamp = 1000 },
+        PHONE   = { revision = 1, percent = 0.55, timestamp = 800  },
+    }
+    h.assert_nil(JumpPolicy.pick_jump_target(entries, "EREADER", nil),
+        "baseline nil: legacy ranking unchanged")
+end
+
+
+-- ----------------------------------------------------------------------------
+-- moved_substantially — the shared "actually moved" threshold behind
+-- should_prompt's substantive-delta gate.
+-- ----------------------------------------------------------------------------
+
+do
+    h.assert_false(JumpPolicy.moved_substantially(0.30, "x1", 0.3005, "x1"),
+        "moved: tiny wobble below epsilon -> no move")
+    h.assert_false(JumpPolicy.moved_substantially(0.30, "x1", 0.303, "x1"),
+        "moved: small delta, same xpath -> no move")
+    h.assert_true(JumpPolicy.moved_substantially(0.30, "x1", 0.303, "x2"),
+        "moved: small delta but xpath changed -> move")
+    h.assert_true(JumpPolicy.moved_substantially(0.30, "x1", 0.32, "x1"),
+        "moved: delta above trigger -> move")
+    h.assert_true(JumpPolicy.moved_substantially(0.30, nil, 0.32, nil),
+        "moved: nil xpaths, big delta -> move")
+end

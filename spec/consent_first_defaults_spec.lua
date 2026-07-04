@@ -91,6 +91,8 @@ do
         "consent: Syncthing transport defaults OFF")
     h.assert_equal(default_for("syncery_use_cloud"), "false",
         "consent: Cloud transport defaults OFF")
+    h.assert_equal(default_for("syncery_wake_wifi_on_open"), "false",
+        "consent: wake-Wi-Fi-on-open defaults OFF (network-touching, opt-in)")
 end
 
 

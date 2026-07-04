@@ -198,3 +198,68 @@ do
     h.assert_nil(src:find("JumpToastWidget", 1, true),
         "dead code: JumpToastWidget require/use removed (toast_widget supersedes it)")
 end
+
+
+-- ----------------------------------------------------------------------------
+-- From -> to context line: WHEN the peer was there + where the reader is NOW.
+-- ----------------------------------------------------------------------------
+
+do
+    local msg = JumpToast.message{
+        remote_label = "Kindle5", percent = 0.42, chapter = "Chapter 7",
+        timestamp = 1783111042, local_percent = 0.301,
+    }
+    h.assert_true(msg:find("Kindle5 is at 42%%") ~= nil, "ctx: head line intact")
+    h.assert_true(msg:find("\n") ~= nil,                 "ctx: second line present")
+    h.assert_true(msg:find("you are at 30%%") ~= nil,    "ctx: local position shown")
+    h.assert_true(msg:find("%d%d%d%d%-%d%d%-%d%d %d%d:%d%d") ~= nil,
+        "ctx: timestamp rendered as YYYY-MM-DD HH:MM")
+end
+
+do
+    local msg = JumpToast.message{
+        remote_label = "K3", page = 120, local_page = 96, timestamp = 1783111042,
+    }
+    h.assert_true(msg:find("you are on page 96") ~= nil, "ctx: paging docs show local page")
+end
+
+do
+    local msg = JumpToast.message{ remote_label = "K3", percent = 0.5 }
+    h.assert_nil(msg:find("\n"), "ctx: no second line when no context is available")
+end
+
+-- ---------------------------------------------------------------------------
+-- fields() — the here/there cells that buildContent lays out.  (buildContent
+-- itself needs KOReader widgets, so only the pure field derivation is tested.)
+-- ---------------------------------------------------------------------------
+do
+    local f = JumpToast.fields{
+        remote_label = "Kobo", percent = 0.45, chapter = "Chapter 7",
+        local_percent = 0.30, local_chapter = "Chapter 3", timestamp = 1783111042,
+    }
+    h.assert_equal(f.peer_label, "Kobo", "fields: peer label is the remote device")
+    h.assert_true(f.peer_unit:find("45", 1, true) ~= nil, "fields: peer unit is the percent")
+    h.assert_equal(f.peer_chapter, "Chapter 7", "fields: peer chapter kept separate")
+    h.assert_true(f.here_unit:find("30", 1, true) ~= nil, "fields: here unit is the local percent")
+    h.assert_equal(f.here_chapter, "Chapter 3", "fields: here chapter kept separate")
+    h.assert_true(f.timestamp:find("%d%d%d%d%-%d%d%-%d%d %d%d:%d%d") ~= nil,
+        "fields: timestamp resolved, standalone (not glued to a unit)")
+    h.assert_nil(f.here_unit:find("%d%d%d%d", 1, false),
+        "fields: the timestamp is NOT part of a unit cell")
+end
+
+do
+    -- Paging docs: the unit is the page; no chapters resolve.
+    local f = JumpToast.fields{ remote_label = "K3", page = 120, local_page = 96 }
+    h.assert_true(f.peer_unit:find("120", 1, true) ~= nil, "fields: paging peer unit is the page")
+    h.assert_true(f.here_unit:find("96", 1, true) ~= nil, "fields: paging here unit is the local page")
+    h.assert_equal(f.peer_chapter, "—", "fields: no chapter -> em-dash placeholder")
+end
+
+do
+    -- Absent inputs -> sensible, non-nil defaults.
+    local f = JumpToast.fields{}
+    h.assert_true(f.here_label ~= "" and f.peer_label ~= "", "fields: labels always present")
+    h.assert_equal(f.peer_chapter, "—", "fields: absent chapter -> em-dash placeholder")
+    h.assert_nil(f.timestamp, "fields: no timestamp when absent")
+end

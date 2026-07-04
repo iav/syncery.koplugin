@@ -38,6 +38,7 @@ local Util          = require("syncery_util")
 local Settings      = require("syncery_settings")
 local AnnPaths      = require("syncery_ann/paths")
 local ProgressPaths = require("syncery_progress/paths")
+local ProgressStateStore = require("syncery_progress/state_store")
 local I18n          = require("syncery_i18n")
 local StateStore    = require("syncery_ann/state_store")
 
@@ -96,13 +97,31 @@ function PluginSync.do_cloud_upload(plugin, state)
     local a_path = AnnPaths.shared_annotations_path(state.file)
 
     if p_path then
+        local content
         local f = io.open(p_path, "rb")
         if f then
-            local content = f:read("*a")
+            content = f:read("*a")
             f:close()
-            if content and content ~= "" then
-                table.insert(entries, { kind = "progress", content = content })
-            end
+        end
+        -- Bootstrap a fresh-device PULL of the peer's reading position, exactly
+        -- like the annotations path below.  With no local progress file the
+        -- bidirectional cloud sync would skip progress entirely (push and pull
+        -- are ONE op -- both need staged content), so a device opening a book
+        -- for the FIRST time never DOWNLOADS the peer's position at open.  It
+        -- would arrive only on the next debounced upload AFTER our own autosave
+        -- creates the file -- up to cloud_upload_delay (60 s) later, far too
+        -- late for the open-moment jump (the annotations path already pulls at
+        -- open, so the reader sees fresh notes but a stale position).  Stage a
+        -- canonical EMPTY envelope (our no-opinion side of the per-device
+        -- merge) when progress sync is on; the merge pulls the remote position
+        -- in and on_reconciled drives checkRemote.  Safe: progress entries
+        -- carry no tombstones, so an empty local side yields the remote entries
+        -- with no deletions.
+        if (not content or content == "") and plugin.sync_progress then
+            content = ProgressStateStore.empty_envelope_json()
+        end
+        if content and content ~= "" then
+            table.insert(entries, { kind = "progress", content = content })
         end
     end
     if a_path then

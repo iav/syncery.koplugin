@@ -262,20 +262,31 @@ end
 -- ---------------------------------------------------------------------------
 
 
--- menuCloudConfig with NO destination configured (default stub): 4 cloud config
--- rows only — Destination, Clear destination, Upload delay, Check cloud settings.
--- codex 552: the two opt-in wake-push toggles are HIDDEN until a destination is
--- set (the wake gate no-ops without one, so a visible toggle would be dead).
--- There is ONE cloud backend (the "Cloud storage+" plugin) with an invisible
--- syncservice fallback — no picker, no "Sync backend:" row.
+-- menuCloudConfig with NO destination configured (default stub): 5 rows — the
+-- four cloud config rows (Destination, Clear destination, Upload delay, Check
+-- cloud settings) plus the wake-on-open toggle (always present, greyed until a
+-- destination exists).  codex 552: the two close/sleep wake-push toggles are
+-- HIDDEN until a destination is set (their wake gate no-ops without one, so a
+-- visible toggle would be dead).  ONE cloud backend (the "Cloud storage+"
+-- plugin) with an invisible syncservice fallback — no picker, no "Sync
+-- backend:" row.
 do
     local plugin = menu_support.make_fake_plugin{}
     local rows = T.menuCloudConfig(plugin)
-    h.assert_equal(#rows, 4, "menuCloudConfig: 4 rows when no destination (wake toggles hidden)")
+    h.assert_equal(#rows, 5, "menuCloudConfig: 5 rows when no destination (4 config + wake-on-open, greyed)")
     h.assert_nil(menu_support.find_row(rows, "Wake Wi-Fi for cloud push on close"),
         "552: close wake toggle hidden until a cloud destination exists")
     h.assert_nil(menu_support.find_row(rows, "Wake Wi-Fi for cloud push on sleep"),
         "552: sleep wake toggle hidden until a cloud destination exists")
+
+    -- Wake-on-open: present, checkbox row, greyed until a destination exists
+    -- (enabled_func re-evaluates on repaint — no submenu rebuild needed).
+    local wake = menu_support.find_row(rows, "Wake Wi-Fi for cloud pull on open")
+    h.assert_true(wake ~= nil, "menuCloudConfig: wake-on-open toggle present")
+    h.assert_true(type(wake.enabled_func) == "function",
+        "wake-on-open: destination-gated via enabled_func")
+    h.assert_false(wake.enabled_func(),
+        "wake-on-open: greyed while no destination is configured")
 
     -- U18: the cloud config-check row is labelled "Check cloud settings", not
     -- "Test connection" — the cloud check does NO network probe (only
@@ -814,7 +825,7 @@ do
     local plugin = menu_support.make_fake_plugin{}
     local rows   = T2.menuCloudConfig(plugin)
 
-    h.assert_equal(#rows, 6, "552: destination set -> 6 rows (4 config + 2 wake toggles)")
+    h.assert_equal(#rows, 7, "552: destination set -> 7 rows (4 config + wake-on-open + 2 close/sleep wake toggles)")
     h.assert_true(menu_support.find_row(rows, "Wake Wi-Fi for cloud push on close") ~= nil,
         "552: close wake toggle shown when a destination is configured")
     h.assert_true(menu_support.find_row(rows, "Wake Wi-Fi for cloud push on sleep") ~= nil,
@@ -837,7 +848,7 @@ do
     local plugin = menu_support.make_fake_plugin{ cloud_sync = false }  -- async provider
     local rows   = T2.menuCloudConfig(plugin)
 
-    h.assert_equal(#rows, 4, "Option A: async provider -> 4 config rows, no wake toggles")
+    h.assert_equal(#rows, 5, "Option A: async provider -> 5 rows (4 config + wake-on-open greyed; close/sleep hidden)")
     h.assert_nil(menu_support.find_row(rows, "Wake Wi-Fi for cloud push on close"),
         "Option A: close wake toggle hidden for async provider")
     h.assert_nil(menu_support.find_row(rows, "Wake Wi-Fi for cloud push on sleep"),
@@ -861,7 +872,7 @@ do
     local plugin = menu_support.make_fake_plugin{ wake_transport_ready = false }
     local rows   = T2.menuCloudConfig(plugin)
 
-    h.assert_equal(#rows, 4, "3219: transport not ready -> 4 config rows, no wake toggles")
+    h.assert_equal(#rows, 5, "3219: transport not ready -> 5 rows (4 config + wake-on-open greyed; close/sleep hidden)")
     h.assert_nil(menu_support.find_row(rows, "Wake Wi-Fi for cloud push on close"),
         "3219: close wake toggle hidden when transport not ready")
     h.assert_nil(menu_support.find_row(rows, "Wake Wi-Fi for cloud push on sleep"),

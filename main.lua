@@ -591,6 +591,7 @@ local PREFERENCE_KEYS = {
     "syncery_syncthing_port", "syncery_syncthing_scheme",
     -- Cloud
     "syncery_use_cloud", "syncery_cloud_server", "syncery_cloud_upload_delay",
+    "syncery_wake_wifi_on_open",
     -- DB sync (Reading Statistics + Vocabulary Builder)
     "syncery_db_sync_enabled", "syncery_db_sync_stats", "syncery_db_sync_vocab",
     "syncery_db_sync_unify", "syncery_db_sync_interval_min",
@@ -808,6 +809,10 @@ function Syncery:init()
         -- KOSync).  Separate from close because sleep fires automatically and
         -- often, so its battery cost is the user's call.  OFF by default.
         self.wake_wifi_on_suspend  = read_bool("syncery_wake_wifi_on_suspend",  false)
+        -- Opt-in: raise Wi-Fi for the open/resume-moment cloud pull when the
+        -- device wakes/opens OFFLINE -- the incoming twin of the close-wake.
+        -- Default OFF (consent-first, like every network-touching toggle).
+        self.wake_wifi_on_open     = read_bool("syncery_wake_wifi_on_open",     false)
         -- Trigger-only sync of the sibling Statistics / Vocabulary plugins.
         -- These live fields back the What's-synced toggles; syncery_db_sync
         -- reads the matching G_reader_settings keys (which the toggles persist).
@@ -955,8 +960,25 @@ function Syncery:init()
         -- checkRemote self-guards on `destroyed` (a pull that lands during
         -- teardown is a harmless no-op) and MtimeGate no-ops when the file did
         -- not actually change, so an unchanged sync costs nothing.
+        -- RETRY while checkRemote's TRANSIENT guards hold (held prompt,
+        -- in-flight save/sync) -- a one-shot check died there silently and
+        -- the pulled state was never evaluated.  Bounded.
         on_reconciled = function()
-            self:_schedule("_post_pull_check", 0.5, function() self:checkRemote() end)
+            -- The session's pull has landed: the lost-rerun recovery in
+            -- onNetworkConnected is no longer needed.
+            self._session_pull_pending = nil
+            local tries = 0
+            local function post_pull_check()
+                if self.destroyed then return end
+                if (self.is_saving or self.sync_state == "syncing"
+                        or self._active_sync_box) and tries < 30 then
+                    tries = tries + 1
+                    self:_schedule("_post_pull_check", 2.0, post_pull_check)
+                    return
+                end
+                self:checkRemote()
+            end
+            self:_schedule("_post_pull_check", 0.5, post_pull_check)
         end,
         -- Resolver for hius07's "Cloud storage+" plugin, reached
         -- as a method on the live plugin instance (ui.cloudstorage:sync).
@@ -1413,6 +1435,27 @@ function Syncery:onReaderReady()
             -- duplicated here.
             self.acked_remote_revs = {}
 
+            -- Session recency BASELINE for the jump policy: our own shared-store
+            -- timestamp as it was BEFORE this session's first autosave (which
+            -- fires ~0.5 s below and stamps us "most recent").  checkRemote
+            -- hands it to pick_jump_target so a peer that read after our
+            -- PREVIOUS session still ranks as a forward jump -- otherwise our
+            -- own open-moment stamp always outranks a cloud pull that lands
+            -- seconds later, and the prompt never fires (field report: freshly
+            -- downloaded book -- the pull delivered the peer position, no
+            -- prompt).  0 when we have no entry yet (fresh book: any peer
+            -- wins); left nil if the store cannot be read (legacy ranking).
+            -- Arm the session jump WINDOW (baseline + deadline): for
+            -- SESSION_JUMP_WINDOW_S after open the baseline masks our own
+            -- autosave recency, so the state an open-moment pull delivers can
+            -- still win the jump ranking.  Time-bounded, NOT movement-bounded:
+            -- flipping a few pages to orient right after open must not forfeit
+            -- the incoming jump (field report), while after the window a
+            -- mid-session pull can no longer auto-jump the reader backward
+            -- (codex).  on_resume re-arms the same window: a peer may have
+            -- advanced while we slept.
+            self:_rearmSessionJumpWindow(state)
+
             -- NOTE: there is no scheduled tombstone GC here anymore.
             -- The annotation orchestrator compacts old tombstones on
             -- every sync (compact, never drop), driven by
@@ -1422,41 +1465,59 @@ function Syncery:onReaderReady()
             -- a view-only filter (ProgressBridge).
         end
 
-        self:_schedule("_check_remote_action", 2.0, function()
-            self:checkRemote()
-        end)
+        -- First remote check of the session.  With cloud ON the open-moment
+        -- pull below delivers the freshest peer state only seconds AFTER open
+        -- (2.5 s + reachability probe + transfer), so a 2 s check would build
+        -- the jump prompt from PRE-pull data and race the pull (field report:
+        -- prompt offered a stale position while the progress browser, opened a
+        -- moment later, already showed the fresh one).  Let on_reconciled's
+        -- _post_pull_check drive the first check instead; this one stays as a
+        -- late FALLBACK for when the pull cannot run or complete (offline,
+        -- cold probe, no cloud backend) -- Syncthing-delivered data still
+        -- needs its check.  Harmless when both run: checkRemote is mtime-gated
+        -- and the acked map suppresses a repeat prompt.
+        -- Wait only when the pull's FIRST attempt can actually land soon
+        -- (_isCloudPullPrompt = config/state ready AND cached reachability):
+        -- "no destination"/"no backend"/"unsupported" and a cold or offline
+        -- verdict all keep the fast 2 s check -- in those states nothing
+        -- reconciles soon enough to drive the early check (codex r2/r4/r5).
+        -- The pull itself is scheduled on the WIDER config/state predicate:
+        -- its backoff warms a cold probe on its own.
+        -- ONE exception to "offline -> fast check": when wake-on-open will raise
+        -- Wi-Fi (_wakeWifiForOpenPull below), an offline open DOES reconcile soon
+        -- -- the radio comes up and the pull reruns within seconds.  Reachability
+        -- is false there, so _isCloudPullPrompt keeps the 2 s check, which would
+        -- build the jump prompt from PRE-pull data and race the wake pull (the
+        -- very stale-position-at-open race this fixes).  Treat a pending wake as
+        -- "lands soon" and wait like the reachable case (codex).
+        local pull_expected = self:_isCloudPullReady()
+        local pull_lands_soon = self:_isCloudPullPrompt()
+            or (pull_expected and self:_wakeOpenWillFire())
+        self:_schedule("_check_remote_action",
+            pull_lands_soon and 20.0 or 2.0,
+            function()
+                self:checkRemote()
+            end)
 
         -- Open-moment cloud PULL.  The bidirectional cloud sync is the only way
         -- to DOWNLOAD a peer's data, and it normally rides the autosave upload,
         -- which is debounced (cloud_upload_delay) -- on a short open/close that
         -- flush lands only at teardown, too late to deliver this session.  Fire
-        -- an immediate pull on open instead: it reconciles remote annotations
-        -- into the shared file WHILE the book is open, and on_reconciled then
-        -- offers the [Reload] toast in-session -- even on a fresh device with no
-        -- local annotations (do_cloud_upload stages an in-memory empty envelope
-        -- so the pull runs).  Async (no UI freeze) and reachability-gated inside
-        -- _doCloudUpload; a cold probe simply defers to the cloud backoff, which
-        -- retries when reachable.
-        if self.use_cloud then
+        -- an immediate pull on open instead: it reconciles remote progress and
+        -- annotations into the shared files WHILE the book is open; on_reconciled
+        -- then re-runs checkRemote (jump prompt from FRESH data) and offers the
+        -- [Reload] toast in-session -- even on a fresh device with no local data
+        -- (do_cloud_upload stages an in-memory empty envelope so the pull runs).
+        -- Async (no UI freeze) and reachability-gated inside _doCloudUpload; a
+        -- cold probe simply defers to the cloud backoff, which retries when
+        -- reachable.
+        if pull_expected then
             self:_schedule("_open_cloud_pull", 2.5, function()
                 local s = self:getCurrentState()
                 if s then self:_doCloudUpload(s) end
             end)
-        end
-
-        -- Open-moment cloud PULL: download a peer's progress/annotations now,
-        -- instead of waiting for the debounced autosave upload (which on a
-        -- short open/close only flushes at teardown -- too late to deliver this
-        -- session).  The bidirectional sync reconciles remote data into the
-        -- shared file; on_reconciled then re-runs checkRemote and offers the
-        -- [Reload] toast IN-SESSION, even on a fresh device with no prior
-        -- annotations.  Async (no UI freeze) and reachability-gated inside
-        -- _doCloudUpload, which also no-ops when nothing changed.
-        if self.use_cloud then
-            self:_schedule("_open_cloud_pull", 2.5, function()
-                local s = self:getCurrentState()
-                if s then self:_doCloudUpload(s) end
-            end)
+            -- No-op when online; offline + toggle on -> raise Wi-Fi, rerun.
+            self:_wakeWifiForOpenPull(state)
         end
 
         self:_schedule("_autosave_action", 0.5, function()
@@ -1674,7 +1735,7 @@ end
 --   r_page         — remote page number (1-based)
 --   r_percent      — remote percentage 0.0–1.0 (preferred fallback for r_page)
 --   r_xpath        — optional CRE xpointer (rolling docs only)
---   r_timestamp    — optional Unix seconds (for "X min ago")
+--   r_timestamp    — optional Unix seconds (shown absolute, YYYY-MM-DD HH:MM)
 --   remote_label   — device name to show
 --   transport      — short transport tag, e.g. "Syncthing"
 --   on_jump        — optional callback fired right BEFORE _doJump runs
@@ -1761,13 +1822,23 @@ function Syncery:_promptJump(opts)
     -- `_active_sync_box` is reused as the single-prompt re-entry guard.
     self._active_sync_box = true
 
-    local function stay()
+    -- Clear ONLY the re-entry guard + sync lock, WITHOUT acknowledging the
+    -- remote position.  Used as showExclusive's on_fail: if the non-touch dialog
+    -- raises before it is shown, we must free the guard so future checkRemote()s
+    -- run, but NOT run on_dismiss -- that records the remote revision as acked and
+    -- would suppress a position the reader never saw, permanently until the peer
+    -- bumps its revision (codex).  stay() layers the ack on top of this.
+    local function clear_guard()
         self._active_sync_box = nil
         self.sync_state = "idle"
         if self._sync_unlock_action then
             UIManager:unschedule(self._sync_unlock_action)
             self._sync_unlock_action = nil
         end
+    end
+
+    local function stay()
+        clear_guard()
         if opts.on_dismiss then pcall(opts.on_dismiss) end
     end
 
@@ -1801,12 +1872,22 @@ function Syncery:_promptJump(opts)
     -- resolved from the shared font-independent xpointer.  Paging docs (PDF)
     -- carry no xpath and a FIXED page that is identical across devices, so that
     -- page is the natural unit to show.
-    local jump_opts = { remote_label = opts.remote_label }
+    local jump_opts = {
+        remote_label = opts.remote_label,
+        -- From -> to context: when the peer was there, and where the reader
+        -- is NOW -- the Jump/Stay decision needs both ends visible.
+        timestamp    = opts.r_timestamp,
+    }
     if type(opts.r_xpath) == "string" and opts.r_xpath ~= "" then
         jump_opts.percent = opts.r_percent
         jump_opts.chapter = self:_resolveChapter(opts.r_xpath)
+        jump_opts.local_percent = tonumber(state.percent)
+        -- Resolve OUR chapter too, so the two-column invite shows a symmetric
+        -- "here vs there" comparison (chapter on both sides), not just the peer.
+        jump_opts.local_chapter = self:_resolveChapter(state.xpath)
     else
         jump_opts.page = opts.r_page
+        jump_opts.local_page = tonumber(state.page)
     end
 
     -- Non-touch devices (e.g. Kindle 3, 5-way only): the action bar's [Jump] is
@@ -1830,10 +1911,28 @@ function Syncery:_promptJump(opts)
         ActionBar.showExclusive(function(release)
             local ButtonDialog = require("ui/widget/buttondialog")
             local dlg
+            -- "here vs there" comparison widget: device name in a fixed-width
+            -- column so the units line up, the chapter on its own line below.
+            -- It sizes ITSELF to its content (capped at 0.86 of the short screen
+            -- edge) and returns that width; the dialog then grows to wrap it --
+            -- compact for short names, wider for a long chapter title -- so the
+            -- content never over-wraps in a fixed narrow box.  Focus-inert so
+            -- [Jump] keeps the initial focus.
+            local screen_min = math.min(Device.screen:getWidth(),
+                Device.screen:getHeight())
+            local content, content_w = JumpToast.buildContent(jump_opts,
+                math.floor(screen_min * 0.86))
+            content.not_focusable = true
+            -- Grow to wrap the content, clamped so the buttons keep room and it
+            -- never exceeds the screen.
+            local dlg_w = math.max(math.floor(screen_min * 0.5),
+                math.min(content_w + math.floor(screen_min * 0.08),
+                         math.floor(screen_min * 0.95)))
             dlg = ButtonDialog:new{
-                title = JumpToast.message(jump_opts) .. "\n\n"
-                    .. _("Annotations are already synced — this only moves your reading position."),
+                width = dlg_w,
+                title = _("Jump to another device's position?"),
                 title_align = "center",
+                _added_widgets = { content },
                 dismissable = true,
                 buttons = { {
                     { text = JumpToast.actionLabel(), is_enter_default = true,  -- "Jump" (default)
@@ -1844,8 +1943,14 @@ function Syncery:_promptJump(opts)
                 tap_close_callback = function() release(); stay() end,  -- Back / tap-outside = Stay
             }
             UIManager:show(dlg)
+            -- The not_focusable comparison widget drops the buttons out of the
+            -- initial highlight; point focus at the first button so [Jump] is
+            -- highlighted from the start (as it is with a plain-title dialog).
+            if dlg.layout and dlg.layout[1] and dlg.layout[1][1] then
+                dlg:moveFocusTo(1, 1)
+            end
             return dlg  -- handed to showExclusive so M.dismiss can close it on teardown
-        end)
+        end, clear_guard)  -- on_fail: a throw before wiring the dialog frees the guard WITHOUT acking
         return true
     end
 
@@ -1876,7 +1981,15 @@ function Syncery:_jumpToLatestDevice()
     end
     local shared = ProgressStateStore.load_shared(state.file)
     local fresh  = ProgressBridge.filter_fresh_for_display(shared.entries or {})
-    local best   = JumpPolicy.pick_jump_target(fresh, self.device_id)
+    -- Same session baseline as the reactive path (codex): during the jump
+    -- window a freshly-pulled peer must rank as forward HERE too, or the
+    -- automatic prompt would offer a jump this explicit action denies.  Read
+    -- through the SELF-EXPIRING accessor -- past the window this must rank by
+    -- live recency even if no remote check happened to run since (codex).
+    -- (The window's further-AND-fresher direction rule is reactive-only: this
+    -- is an explicit request, plain recency semantics apply.)
+    local best   = JumpPolicy.pick_jump_target(
+        fresh, self.device_id, self:_sessionBaseline())
     if not best then
         UIManager:show(InfoMessage:new{
             text = _("No newer position from another device to jump to."),
@@ -2727,6 +2840,15 @@ function Syncery:checkRemote()
     local shared = ProgressStateStore.load_shared(state.file)
     local fresh  = ProgressBridge.filter_fresh_for_display(shared.entries)
 
+    -- The session baseline lives only for the jump WINDOW after open/resume.
+    -- Time-bounded, deliberately NOT movement-bounded: flipping a few pages
+    -- to orient right after open must not forfeit the incoming jump (field
+    -- report), and page-turn heuristics misfire on paged documents (codex).
+    -- Once the window expires the baseline drops and our own live recency
+    -- rules again, so a late pull can never auto-jump the reader backward.
+    -- Read through the self-expiring accessor (shared with the manual jump).
+    local session_baseline = self:_sessionBaseline()
+
     -- ── 3a. Reload handoff: re-offer a jump dropped by [Reload]-first ──
     --
     -- If [Reload] was tapped while a jump bar was still up, its identity was
@@ -2781,7 +2903,16 @@ function Syncery:checkRemote()
         -- normal path, which finds no forward jump and offers nothing.
     end
 
-    local best, best_device_id = JumpPolicy.pick_jump_target(fresh, self.device_id)
+    -- Pure recency, gated only by the session baseline: if a peer's timestamp
+    -- is newer than this reader's session start, someone is actively reading
+    -- there -- offer the jump regardless of direction.  Readers re-read and
+    -- reference earlier chapters, so a peer BEHIND our position can still be
+    -- the freshest activity (d0nizam review, upstream #7).  This matches the
+    -- manual "jump to another device" path (_jumpToLatestDevice), which has
+    -- always used plain recency + baseline; the reactive path now mirrors it.
+    local best, best_device_id = JumpPolicy.pick_jump_target(
+        fresh, self.device_id, session_baseline)
+
     if not best then
         -- No forward jump this tick -- offer the annotation reload instead.
         self:_maybeOfferReload()
@@ -2904,6 +3035,22 @@ function Syncery:onQuit()           self._lifecycle:on_quit()            end
 function Syncery:onNetworkConnected()
     if self._cloud_reachability then
         self._cloud_reachability:on_network_connected()
+    end
+    -- Liveness for the session pull: the NetworkMgr rerun callbacks that
+    -- open/resume register are LOSSY upstream (a second registration during a
+    -- pending connect is EBUSY-dropped; the connected-but-not-online state
+    -- calls beforeWifiAction with NO callback; nothing survives a book
+    -- switch).  This broadcast fires regardless of which callback survived --
+    -- so if this session still owes its open-moment pull, restart the window
+    -- countdown and (re)arm the pull slot here.  Also covers Wi-Fi raised BY
+    -- HAND while the book idled offline (independent review).
+    if not self.destroyed and self._session_pull_pending
+            and self:_isCloudPullReady() then
+        self:_extendSessionJumpWindow()
+        self:_schedule("_open_cloud_pull", 0.5, function()
+            local s = self:getCurrentState()
+            if s then self:_doCloudUpload(s) end
+        end)
     end
 end
 function Syncery:onNetworkDisconnected()
@@ -3289,6 +3436,179 @@ end
 
 function Syncery:_logActivity(kind, detail)
     log_activity(kind, detail)
+end
+
+-- Can the open/resume-moment cloud pull ACTUALLY run right now?  The pull's
+-- own preconditions, read from the transport's canonical state: a saved URL
+-- alone is not enough -- "no_server", "no_backend" and "unsupported" all mean
+-- _doCloudUpload returns before any reconcile could fire, so callers must not
+-- wait on a pull that can never happen (codex).  Fails CLOSED (false).
+function Syncery:_isCloudPullReady()
+    if not self.use_cloud then return false end
+    if not Settings.is_cloud_configured() then return false end
+    if not self._transport or type(self._transport.get_status) ~= "function" then
+        return false
+    end
+    local ok, statuses = pcall(self._transport.get_status, self._transport)
+    local cloud = ok and type(statuses) == "table" and statuses.cloud
+    return type(cloud) == "table" and cloud.state == "ready"
+end
+
+-- Will the pull's first attempt LAND soon?  Config/state readiness AND the
+-- cached reachability verdict.  Deliberately split: the pull is scheduled on
+-- the wide predicate (its backoff warms a cold probe), the slow first-check
+-- fallback applies only on this narrow one.
+function Syncery:_isCloudPullPrompt()
+    return self:_isCloudPullReady() and self:_isCloudReachable()
+end
+
+-- Arm (or re-arm) the session jump WINDOW: snapshot our own shared-store
+-- timestamp as the recency baseline BEFORE the next autosave stamps us "most
+-- recent", and start the SESSION_JUMP_WINDOW_S countdown.  Called from
+-- onReaderReady (open) and from the resume path (a peer may have advanced
+-- while we slept -- resume is an open, minus the re-render).  While the
+-- window is live, checkRemote lets a freshly-pulled peer state win the jump
+-- ranking; when it expires the baseline is dropped and our own live recency
+-- rules again.
+function Syncery:_rearmSessionJumpWindow(state)
+    -- Clear FIRST, unconditionally: a rearm with no readable state (resume in
+    -- the FileManager, a transiently nil getCurrentState on reopen) must not
+    -- leave the PREVIOUS book's window armed (independent review).
+    self._session_recency_baseline = nil
+    self._session_baseline_deadline = nil
+    self._session_pull_pending = nil
+    state = state or self:getCurrentState()
+    if not state then return end
+    local ok0, shared0 = pcall(ProgressStateStore.load_shared, state.file)
+    if ok0 and type(shared0) == "table" and type(shared0.entries) == "table" then
+        local own = shared0.entries[self.device_id]
+        self._session_recency_baseline =
+            (type(own) == "table" and tonumber(own.timestamp)) or 0
+        self._session_baseline_deadline =
+            os.time() + JumpPolicy.SESSION_JUMP_WINDOW_S
+        -- This session now owes an open-moment pull; onNetworkConnected uses
+        -- it to recover when the NetworkMgr rerun got lost.  Cleared by the
+        -- first reconcile (on_reconciled) and by the destroying teardown.
+        self._session_pull_pending = true
+    end
+end
+
+-- Wake-on-open (opt-in, default OFF): when the open/resume pull is
+-- config-ready but the device is OFFLINE, register a non-blocking
+-- willRerunWhenOnline wake (respects wifi_enable_action; UI stays free).
+-- Returns true only when the wake was registered; "already online" = false,
+-- callers proceed on the normal schedule.  The rerun goes through the
+-- `_open_cloud_pull` SLOT (coalesces with a poll-loop pull) and restarts the
+-- window countdown so the raise latency is not charged to the jump window.
+-- Failed-raise cool-down (module-level: survives per-book plugin instances).
+-- Offline for real (plane, dacha): every open/wake would otherwise replay a
+-- full connect attempt ending in KOReader's error popup.  Armed at
+-- registration, cleared when a rerun actually fires (success).
+local _wake_open_cooldown_until = 0
+local WAKE_OPEN_FAIL_COOLDOWN_S = 300
+-- How far past the window deadline a reconnect may still revive the jump
+-- window (onNetworkConnected is otherwise unbounded -- see _extendSessionJumpWindow).
+local SESSION_JUMP_REVIVAL_GRACE_S = 180
+
+-- COVERAGE: this body has no unit spec.  main.lua pulls ~78 KOReader modules,
+-- so the test harness cannot load it and no spec instantiates Syncery (the repo
+-- specs exercise extracted modules / fakes instead).  The call WIRING -- wake
+-- attempted once per offline open, re-probes never re-fire it, no-ops when
+-- already online, tolerates a plugin without the method -- IS covered in
+-- lifecycle_init_spec ("wake-on-open wiring").  The gates below (turn_on
+-- contract, cooldown, dropbox-vs-connected method select) are review-verified
+-- only; if this ever grows, extract the decision core like jump_policy.lua.
+-- Will the open-moment Wi-Fi wake actually TRY to raise the radio (and so rerun
+-- the pull within seconds)?  Mirrors the pre-probe guards in
+-- _wakeWifiForOpenPull: toggle on, Wi-Fi set to come up silently, not cooling
+-- down from a just-failed raise.  Cloud-pull readiness is checked by the caller
+-- (pull_expected).  Used to decide the first-check delay: when true, an offline
+-- open still delivers fresh peer data soon, so the stale check must wait.
+-- OFFLINE-gated: the wake only reruns the pull when it actually RAISES Wi-Fi
+-- from offline (_wakeWifiForOpenPull's willRerunWhen* path).  On an already
+-- online device it is a no-op for the delay -- the pull is scheduled on its own
+-- and, if cloud is unreachable there, nothing lands soon, so the 2 s fast check
+-- must stay for Syncthing/local data (codex: don't claim a wake when online).
+function Syncery:_wakeOpenWillFire()
+    return self.wake_wifi_on_open
+        and not self:_isNetworkOnline()
+        and G_reader_settings ~= nil
+        and G_reader_settings:readSetting("wifi_enable_action") == "turn_on"
+        and os.time() >= _wake_open_cooldown_until
+end
+
+function Syncery:_wakeWifiForOpenPull(state)
+    if not self.wake_wifi_on_open then return false end
+    state = state or self:getCurrentState()
+    if not state or not state.file then return false end
+    if not self:_isCloudPullReady() then return false end
+    -- SILENT by contract: only act when Wi-Fi is set to come up automatically.
+    -- Under "prompt" the willRerun* path would raise the modal Wi-Fi dialog on
+    -- every offline open -- the help text promises we never do that (codex).
+    if not G_reader_settings
+            or G_reader_settings:readSetting("wifi_enable_action") ~= "turn_on" then
+        return false
+    end
+    if os.time() < _wake_open_cooldown_until then return false end
+    local ok, NetworkMgr = pcall(require, "ui/network/manager")
+    if not ok or not NetworkMgr then return false end
+    local file = state.file
+    local rerun = function()
+        _wake_open_cooldown_until = 0   -- the raise worked; wake freely again
+        if self.destroyed then return end
+        local s = self:getCurrentState()
+        -- The book may have changed while Wi-Fi came up; the new session
+        -- armed its own window and pull -- do not touch them.
+        if not s or s.file ~= file then return end
+        self:_extendSessionJumpWindow()
+        self:_schedule("_open_cloud_pull", 0.5, function()
+            local s2 = self:getCurrentState()
+            if s2 then self:_doCloudUpload(s2) end
+        end)
+    end
+    -- Dropbox needs real WAN (token refresh); WebDAV/FTP destinations are
+    -- often LAN-only, where KOReader's isOnline() WAN/DNS probe can fail on a
+    -- perfectly reachable server -- mirror SyncService.sync: rerun on ONLINE
+    -- for dropbox, on CONNECTED for everything else (codex).
+    local server = Settings.get_cloud_server and Settings.get_cloud_server()
+    local method = (type(server) == "table" and server.type == "dropbox")
+        and "willRerunWhenOnline" or "willRerunWhenConnected"
+    if type(NetworkMgr[method]) ~= "function" then return false end
+    local ok2, deferred = pcall(NetworkMgr[method], NetworkMgr, rerun)
+    if ok2 and deferred then
+        -- Attempt in flight: don't retrigger the connect UX until it either
+        -- succeeds (rerun clears this) or the cool-down lapses.
+        _wake_open_cooldown_until = os.time() + WAKE_OPEN_FAIL_COOLDOWN_S
+        return true
+    end
+    return false
+end
+
+-- Restart the window countdown on the RAW (unexpired) baseline, so a reconnect
+-- slower than the window still revives it -- but only within GRACE of the
+-- deadline: an hours-late Wi-Fi must not resurrect it on a stale baseline
+-- (would let the peer's long-passed position jump us backward).
+function Syncery:_extendSessionJumpWindow()
+    if self._session_recency_baseline == nil then return end
+    local now = os.time()
+    if now > (self._session_baseline_deadline or 0) + SESSION_JUMP_REVIVAL_GRACE_S then
+        return
+    end
+    self._session_baseline_deadline = now + JumpPolicy.SESSION_JUMP_WINDOW_S
+end
+
+-- The live session baseline, with SELF-EXPIRY: past the window deadline the
+-- baseline is cleared and nil is returned.  Every consumer (the reactive
+-- checkRemote AND the manual jump) must read it through here -- a lazy check
+-- inside checkRemote alone leaves a stale baseline for the manual path when
+-- no remote check happens to run after the deadline (codex).
+function Syncery:_sessionBaseline()
+    if self._session_recency_baseline ~= nil
+            and os.time() > (self._session_baseline_deadline or 0) then
+        self._session_recency_baseline = nil
+        self._session_baseline_deadline = nil
+    end
+    return self._session_recency_baseline
 end
 
 function Syncery:cancelPendingSync()

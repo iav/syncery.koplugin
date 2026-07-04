@@ -194,14 +194,15 @@ do
         "cloud upload: unreachable cloud → uses the cloud backoff, not the link one")
 end
 
--- Online + configured, but both files absent on disk → no push
--- (the entries list is empty, so do_cloud_upload returns before
--- touching the transport).
+-- Online + configured, both files absent on disk, AND every sync master OFF
+-- → nothing to stage → empty entries → no push.  (With a master ON the
+-- fresh-device bootstrap stages an empty envelope so the PULL runs -- see the
+-- two bootstrap cases below.)
 do
-    local p = make_plugin{}
+    local p = make_plugin{ sync_progress = false }
     PluginSync.do_cloud_upload(p, { file = "/no/such/book.epub" })
     h.assert_nil(called(p, "push_cloud_files"),
-        "cloud upload: no files on disk → empty entries → no push")
+        "cloud upload: no files on disk + all sync OFF → empty entries → no push")
 end
 
 -- Fresh-device PULL bootstrap: no local annotations file but the annotations
@@ -221,6 +222,26 @@ do
     end
     h.assert_true(has_ann,
         "cloud upload: an in-memory empty annotations envelope is staged so the pull runs")
+end
+
+-- Fresh-device PULL bootstrap, PROGRESS side: no local progress file but the
+-- progress master is ON → stage an in-memory empty progress envelope so the
+-- bidirectional sync RUNS and DOWNLOADS a peer's reading position at OPEN
+-- (then on_reconciled drives checkRemote / the jump).  Without it the peer's
+-- position arrives only on the next debounced upload after our own autosave,
+-- up to cloud_upload_delay later -- too late for the open-moment jump.
+do
+    local p = make_plugin{ sync_progress = true }
+    PluginSync.do_cloud_upload(p, { file = "/no/such/book.epub" })
+    local c = called(p, "push_cloud_files")
+    h.assert_true(c ~= nil,
+        "cloud upload: no progress file + progress ON → push happens to pull remote position")
+    local has_progress = false
+    for _, e in ipairs((c and c.entries) or {}) do
+        if e.kind == "progress" then has_progress = true end
+    end
+    h.assert_true(has_progress,
+        "cloud upload: an in-memory empty progress envelope is staged so the position pull runs")
 end
 
 

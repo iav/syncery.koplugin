@@ -430,6 +430,12 @@ function Teardown.flush(plugin, ui_manager, util_now, logger, opts)
     elseif opts.destroying or plugin._pending_destroy then
         plugin._pending_destroy = nil
         plugin.destroyed = true
+        -- Drop the session jump window with the session: a baseline armed
+        -- for THIS book must not leak into the next one when the reopen's
+        -- own rearm cannot read state yet (independent review).
+        plugin._session_recency_baseline = nil
+        plugin._session_baseline_deadline = nil
+        plugin._session_pull_pending = nil
         -- Shut down the transport stack: cancels pending retries inside the
         -- orchestrator and prevents further push_book calls.  Idempotent.
         if plugin._transport then
