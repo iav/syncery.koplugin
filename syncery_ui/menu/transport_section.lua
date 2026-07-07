@@ -562,7 +562,22 @@ function T.menuCloudConfig(plugin)
     -- client-server push (an offline push's retry is cancelled by shutdown, so
     -- the state may never leave the device); Syncthing is peer-to-peer +
     -- daemon-backed and out of scope.  Both OFF by default, separate.
-    if Settings.is_cloud_configured() then
+    -- Option A (d0nizam, wake-push design): require BOTH a READY transport and a
+    -- SYNCHRONOUS provider -- exactly the wake path's own precondition, so a shown
+    -- toggle always maps to a wake that can actually fire.
+    --   * _hasConfiguredTransportForWakePush(): cloud.state == "ready" (server
+    --     picked, backend present and able to sync).  is_cloud_configured() alone
+    --     is too weak -- a syncservice FALLBACK still reports the provider with no
+    --     usable backend (e.g. FTP-only config), so the toggle would be a dead
+    --     switch the wake gate later rejects, promising a sync that never runs
+    --     (codex 3219).
+    --   * _isCloudPushSynchronous(): only SyncService can keep the "delivery
+    --     before sleep" promise; the async "Cloud storage+" backend dispatches via
+    --     UIManager:nextTick, so the transfer rides a loop the blocking pre-sleep
+    --     wait can't run.  HIDE for async (not grey): greying reads as "your
+    --     provider should support this," when the feature doesn't apply at all.
+    if plugin:_hasConfiguredTransportForWakePush()
+            and plugin:_isCloudPushSynchronous() then
         table.insert(items, H.makeBoolToggle(plugin,
             "wake_wifi_for_sync", "syncery_wake_wifi_for_sync",
             _("Wake Wi-Fi for cloud push on close"),

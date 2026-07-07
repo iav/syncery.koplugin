@@ -820,3 +820,50 @@ do
     h.assert_true(menu_support.find_row(rows, "Wake Wi-Fi for cloud push on sleep") ~= nil,
         "552: sleep wake toggle shown when a destination is configured")
 end
+
+
+-- Option A (d0nizam): destination configured BUT the active provider is ASYNC
+-- (Cloud storage+) -> the wake toggles are HIDDEN, because wake-push can't keep
+-- its delivery-before-sleep promise on a nextTick-deferred transfer.  Hidden,
+-- not greyed: the feature doesn't apply to async transports.
+do
+    package.loaded["syncery_ui/menu/transport_section"] = nil
+    package.loaded["syncery_settings"]                  = nil
+    menu_support.install_stubs({ settings = {
+        is_cloud_configured   = true,
+        describe_cloud_server = "webdav://example",
+    } })
+    local T2     = require("syncery_ui/menu/transport_section")
+    local plugin = menu_support.make_fake_plugin{ cloud_sync = false }  -- async provider
+    local rows   = T2.menuCloudConfig(plugin)
+
+    h.assert_equal(#rows, 4, "Option A: async provider -> 4 config rows, no wake toggles")
+    h.assert_nil(menu_support.find_row(rows, "Wake Wi-Fi for cloud push on close"),
+        "Option A: close wake toggle hidden for async provider")
+    h.assert_nil(menu_support.find_row(rows, "Wake Wi-Fi for cloud push on sleep"),
+        "Option A: sleep wake toggle hidden for async provider")
+end
+
+
+-- codex 3219: SYNCHRONOUS provider but the transport is NOT ready (syncservice
+-- fallback reported with no usable backend, e.g. FTP-only config) -> the wake
+-- toggles are HIDDEN.  is_cloud_configured() alone was too weak; the menu must
+-- match the wake precondition (_hasConfiguredTransportForWakePush = state ready).
+do
+    package.loaded["syncery_ui/menu/transport_section"] = nil
+    package.loaded["syncery_settings"]                  = nil
+    menu_support.install_stubs({ settings = {
+        is_cloud_configured   = true,
+        describe_cloud_server = "webdav://example",
+    } })
+    local T2     = require("syncery_ui/menu/transport_section")
+    -- sync provider (default), but transport not ready for wake-push
+    local plugin = menu_support.make_fake_plugin{ wake_transport_ready = false }
+    local rows   = T2.menuCloudConfig(plugin)
+
+    h.assert_equal(#rows, 4, "3219: transport not ready -> 4 config rows, no wake toggles")
+    h.assert_nil(menu_support.find_row(rows, "Wake Wi-Fi for cloud push on close"),
+        "3219: close wake toggle hidden when transport not ready")
+    h.assert_nil(menu_support.find_row(rows, "Wake Wi-Fi for cloud push on sleep"),
+        "3219: sleep wake toggle hidden when transport not ready")
+end

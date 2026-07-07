@@ -97,7 +97,10 @@ local function make_fake_plugin(opts)
     -- #2 gates: radio state before we act (default OFF = we could raise it) and
     -- whether the active cloud push is synchronous (default async = don't lower).
     function plugin:_isWifiOn() return opts.wifi_on == true end
-    function plugin:_isCloudPushSynchronous() return opts.cloud_sync == true end
+    -- Default SYNCHRONOUS (syncservice): the normal provider most wake-path tests
+    -- assume.  Option A gates wake-push to a synchronous provider, so the async
+    -- case is opt-in via cloud_sync=false (see the async-gate test).
+    function plugin:_isCloudPushSynchronous() return opts.cloud_sync ~= false end
 
     -- Mock the lifecycle.timers handle that teardown calls cancel_all on.
     plugin._lifecycle = {
@@ -1049,18 +1052,23 @@ do
 end
 
 
--- #2 (352): with the ASYNC default provider (fire-and-forget cloudstorage) we
--- must NOT lower Wi-Fi — the transfer is still in flight (no completion signal),
--- and cutting it would lose the very push we promised.  cloud_sync=false (default).
+-- Option A (d0nizam): with an ASYNC provider (fire-and-forget cloudstorage,
+-- transfer deferred via UIManager:nextTick) the wake-push can't complete before
+-- sleep/close -- so we do NOT wake at all: no goOnlineToRun, no raised Wi-Fi to
+-- lower, and the flush just runs offline once (state persists, delivered on the
+-- next reachable sync).  The menu also hides the toggle for async; this is the
+-- runtime gate for a provider that changed after the toggle was enabled.
 do
-    local plugin = make_fake_plugin{ wake_wifi_on_suspend = true }  -- async by default
+    local plugin = make_fake_plugin{ wake_wifi_on_suspend = true, cloud_sync = false }
     local ui     = make_fake_uimgr()
 
     Teardown.flush(plugin, ui, fixed_now, nil, { suspend = true })
 
-    h.assert_true(plugin:called("_goOnlineToRun") ~= nil, "suspend: raised Wi-Fi")
+    h.assert_nil(plugin:called("_goOnlineToRun"),
+        "async provider: wake-push gated off (no Wi-Fi raised)")
     h.assert_nil(plugin:called("_lowerWifiAfterWakePush"),
-        "#2/352: async cloudstorage push -> do NOT lower Wi-Fi (transfer in flight)")
+        "async provider: nothing raised -> nothing to lower")
+    h.assert_equal(plugin:count("_writeSave"), 1, "flush still ran once (offline)")
 end
 
 

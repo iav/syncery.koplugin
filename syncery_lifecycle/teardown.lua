@@ -356,12 +356,33 @@ function Teardown.flush(plugin, ui_manager, util_now, logger, opts)
                 dbg_log(ev .. " — no configured cloud transport or book not eligible, not waking")
                 return
             end
+            -- Option A (d0nizam, wake-push design): wake-push ONLY for a
+            -- SYNCHRONOUS provider.  The async "Cloud storage+" backend dispatches
+            -- the transfer via UIManager:nextTick, which the blocking pre-sleep /
+            -- pre-close wait cannot run -- so raising Wi-Fi would promise a
+            -- delivery it can't keep: the upload never runs before sleep (codex
+            -- 928) and the radio is left on with no completion signal to lower it
+            -- (codex 924).  The menu HIDES the toggle for async; gate here too in
+            -- case the provider changed after the toggle was enabled.
+            if not plugin:_isCloudPushSynchronous() then
+                dbg_log(ev .. " — async cloud provider (deferred transfer), can't complete before " .. ev .. ", not waking")
+                return
+            end
             was_online = plugin:_isNetworkOnline()
             if was_online then
                 -- J: already connected — skip goOnlineToRun (its online check can
                 -- WAN/DNS-probe and stall on captive/local-only Wi-Fi); flush now.
+                -- Guard this inline flush with `_wake_push_active` too, symmetric
+                -- with the offline goOnlineToRun below (cursor): the offline wait
+                -- is the KNOWN reentry window, but a synchronous cloud transfer in
+                -- Step 3 could also pump the event loop and let a Suspend/Close
+                -- re-enter Teardown.flush -- the guard makes that reentry defer via
+                -- _pending_destroy instead of re-running Steps 1-4 / shutting the
+                -- transport down mid-flush.  Cleared on throw by the outer pcall.
                 dbg_log(ev .. " — already online, flushing inline")
+                plugin._wake_push_active = true
                 online_flush()
+                plugin._wake_push_active = nil
                 return
             end
             -- Offline: raise Wi-Fi, flush once online.  D: guard a Suspend/Resume
@@ -371,21 +392,15 @@ function Teardown.flush(plugin, ui_manager, util_now, logger, opts)
             plugin._wake_push_active = true
             local raised = plugin:_goOnlineToRun(online_flush)
             plugin._wake_push_active = nil
-            -- #2 (KOSync suspend parity), gated tightly to avoid two failure modes
-            -- codex flagged:
-            --   * async provider (352): the default "Cloud storage+" push is
-            --     fire-and-forget (transfer deferred via UIManager:nextTick), so
-            --     lowering Wi-Fi right after dispatch would CUT the upload the
-            --     help promised.  Only lower when the push is SYNCHRONOUS
-            --     (syncservice), where the transfer already finished here.
-            --   * ownership (331): only lower Wi-Fi WE turned on — the radio was
-            --     off before AND goOnlineToRun actually raised it.  Never touch
-            --     Wi-Fi the user already had on, and don't lower when the wake
-            --     was declined (goOnlineToRun returned false).
-            -- Suspend only (close/quit: nothing sleeps).  Device gate is in the
-            -- plugin method.
-            if opts.suspend and raised and not wifi_was_on
-                    and plugin:_isCloudPushSynchronous() then
+            -- #2 (KOSync suspend parity).  The provider is SYNCHRONOUS here (the
+            -- Option A gate above returned for async), so the transfer already
+            -- finished in online_flush -- lowering Wi-Fi now cannot cut it.  Still
+            -- gated tightly on ownership (codex 331): only lower Wi-Fi WE turned on
+            -- -- the radio was off before AND goOnlineToRun actually raised it.
+            -- Never touch Wi-Fi the user already had on, and don't lower when the
+            -- wake was declined (goOnlineToRun returned false).  Suspend only
+            -- (close/quit: nothing sleeps).  Device gate is in the plugin method.
+            if opts.suspend and raised and not wifi_was_on then
                 plugin:_lowerWifiAfterWakePush()
             end
         end
