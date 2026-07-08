@@ -874,6 +874,19 @@ function T.build(plugin)
     -- section in menuCloudConfig, so they hide when Cloud isn't configured
     -- (they are Cloud-only).  See T.menuCloudConfig.
 
+    -- Opt-in background close flush: take the synchronous cloud sync off the UI
+    -- thread on close/quit (cloud transport only; runs in a subprocess).
+    table.insert(items, H.makeBoolToggle(plugin,
+        "background_close_flush", "syncery_background_close_flush",
+        _("Sync cloud in the background on close"),
+        _("Normally a cloud sync on close downloads, merges and uploads on the "
+        .. "spot, which can freeze the screen for several seconds per file on "
+        .. "slow hardware.  With this on, that work is handed to a background "
+        .. "process instead, so closing a book returns immediately.\n\n"
+        .. "Your changes are still merged safely (nothing is skipped); the "
+        .. "upload just finishes a moment after the book has closed.  Only "
+        .. "affects the cloud transport.  Off by default.")))
+
     return items
 end
 

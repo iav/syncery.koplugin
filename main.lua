@@ -577,6 +577,7 @@ local PREFERENCE_KEYS = {
     -- behaviour / display
     "syncery_jump_mode", "syncery_adapt_highlight_style",
     "syncery_wake_wifi_for_sync", "syncery_wake_wifi_on_suspend",
+    "syncery_background_close_flush",
     -- storage + diagnostics
     "syncery_storage_mode",
     "syncery_tombstone_ttl_days", "syncery_progress_freshness_days",
@@ -808,6 +809,13 @@ function Syncery:init()
         -- KOSync).  Separate from close because sleep fires automatically and
         -- often, so its battery cost is the user's call.  OFF by default.
         self.wake_wifi_on_suspend  = read_bool("syncery_wake_wifi_on_suspend",  false)
+        -- Opt-in background close flush: run the cloud sync in a forked
+        -- subprocess on close/quit so the UI isn't frozen by the synchronous
+        -- ~15s-per-file SyncService transfer.  OFF by default (it defers the
+        -- transport teardown until the child is reaped, and closes finish before
+        -- the push lands — eventually-consistent), so the default path is
+        -- unchanged.
+        self.background_close_flush = read_bool("syncery_background_close_flush", false)
         -- Trigger-only sync of the sibling Statistics / Vocabulary plugins.
         -- These live fields back the What's-synced toggles; syncery_db_sync
         -- reads the matching G_reader_settings keys (which the toggles persist).
@@ -3274,6 +3282,10 @@ end
 
 function Syncery:_doCloudUpload(state)
     return PluginSync.do_cloud_upload(self, state)
+end
+
+function Syncery:_doCloudUploadBg(state)
+    return PluginSync.do_cloud_upload_bg(self, state)
 end
 
 

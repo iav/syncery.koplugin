@@ -890,6 +890,16 @@ msgstr "Не са намерени синхронизирани анотации
 msgid "No synced reading progress found yet."
 msgstr "Все още няма намерен синхронизиран прогрес на четене."
 
+#: syncery_ui/menu/transport_section.lua
+msgid ""
+"Normally a cloud sync on close downloads, merges and uploads on the spot, which can freeze the screen for several seconds per file on slow hardware.  With this on, that work is handed to a background process instead, so closing a book returns immediately.\n"
+"\n"
+"Your changes are still merged safely (nothing is skipped); the upload just finishes a moment after the book has closed.  Only affects the cloud transport.  Off by default."
+msgstr ""
+"Обикновено облачният синк при затваряне сваля, слива и качва на място, което може да замрази екрана за няколко секунди на файл на бавен хардуер.  С тази настройка тази работа се предава на фонов процес и затварянето на книгата връща управлението веднага.\n"
+"\n"
+"Промените ти пак се сливат безопасно (нищо не се пропуска); качването просто завършва малко след като книгата се е затворила.  Засяга само облачния транспорт.  Изключено по подразбиране."
+
 #: main.lua
 msgid "Not synced (no cloud server set): %s"
 msgstr "Не е синхронизирано (няма зададен облачен сървър): %s"
@@ -1297,6 +1307,10 @@ msgstr ""
 "Синхронизирай състоянието на книгата (Прочетена / Чете се / Спряна), оценката със звезди, принадлежността към колекция, персонализираната информация за книгата и ръчно създаденото съдържание между устройствата.\n"
 "\n"
 "Отворете това подменю, за да превключите синхронизирането на метаданни и отделните му полета."
+
+#: syncery_ui/menu/transport_section.lua
+msgid "Sync cloud in the background on close"
+msgstr "Облачен синк във фонов режим при затваряне"
 
 #: syncery_ui/menu/annotations_section.lua
 msgid "Sync font & layout"
