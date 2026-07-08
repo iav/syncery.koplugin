@@ -58,6 +58,10 @@ msgstr ""
 msgid "%s is at %d%% — %s"
 msgstr ""
 
+#: syncery_ui/status_section.lua
+msgid "%s: no backend"
+msgstr ""
+
 #: main.lua
 msgid "(%d other file was skipped — its book could not be identified.)"
 msgid_plural "(%d other files were skipped — their book could not be identified.)"
@@ -771,6 +775,13 @@ msgstr ""
 
 #: syncery_ui/menu/transport_section.lua
 msgid "No Syncthing API key yet — set one up first. Not needed with KOSyncthing+."
+msgstr ""
+
+#: main.lua
+msgid ""
+"No cloud backend is available.\n"
+"\n"
+"Enable the \"Cloud storage+\" plugin (or use a KOReader build with the built-in sync service) so this destination can sync."
 msgstr ""
 
 #: main.lua
@@ -1652,6 +1663,14 @@ msgstr ""
 msgid "Vocabulary"
 msgstr ""
 
+#: syncery_ui/menu/transport_section.lua
+msgid "Wake Wi-Fi for cloud push on close"
+msgstr ""
+
+#: syncery_ui/menu/transport_section.lua
+msgid "Wake Wi-Fi for cloud push on sleep"
+msgstr ""
+
 #: syncery_ui/menu/annotations_section.lua
 msgid ""
 "What to do when another device reaches a new position in this book:\n"
@@ -1661,6 +1680,22 @@ msgid ""
 "Never — stay put; this device is never moved by another.\n"
 "\n"
 "Either way you can still jump on demand from \"Jump to another device now…\" below.  Undo the last jump within 60 seconds from Menu → Syncery → This book → Undo last jump."
+msgstr ""
+
+#: syncery_ui/menu/transport_section.lua
+msgid ""
+"When the device goes to sleep while offline, bring Wi-Fi up and push your latest position and annotations to the cloud before it actually sleeps — so they reach the server instead of waiting for the next time you open this book.\n"
+"\n"
+"The sleep screen appears right away, but the device finishes the handover behind it and only then really sleeps, so sleeping can take up to ~30 seconds worst-case while the connection comes up and the push completes.  If we raised Wi-Fi, it is turned back off again afterwards.\n"
+"\n"
+"Unlike closing a book, sleep happens automatically and often (every idle timeout), so waking Wi-Fi each time costs battery — enable only if reliable sync-on-sleep is worth that to you.  Respects your device's \"when network is needed\" setting.  Off by default."
+msgstr ""
+
+#: syncery_ui/menu/transport_section.lua
+msgid ""
+"When you close a book (or quit KOReader) while offline, bring Wi-Fi up and wait for it before pushing your latest position and annotations to the cloud — so they actually reach the server instead of being silently held back until some later session.\n"
+"\n"
+"Respects your device's \"when network is needed\" setting: it only turns Wi-Fi on if that is set to turn it on automatically (not prompt or ignore).  Off by default.  Closing can pause for up to ~30 seconds worst-case while the connection comes up and the push completes."
 msgstr ""
 
 #: syncery_ui/annotation_viewer/viewer_lifted.lua
@@ -1766,6 +1801,10 @@ msgstr ""
 
 #: syncery_ui/menu/per_book_section.lua
 msgid "an unknown device"
+msgstr ""
+
+#: syncery_ui/menu/transport_section.lua syncery_ui/status_panel.lua
+msgid "no backend"
 msgstr ""
 
 #: syncery_ui/progress_browser/init.lua
@@ -2078,7 +2117,7 @@ msgstr ""
 msgid "syncing"
 msgstr ""
 
-#: syncery_ui/menu/transport_section.lua
+#: syncery_ui/menu/transport_section.lua syncery_ui/status_panel.lua
 msgid "unsupported"
 msgstr ""
 

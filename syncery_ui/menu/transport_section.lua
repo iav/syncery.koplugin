@@ -332,7 +332,14 @@ function T.pickCloudDestination(plugin, touchmenu_instance)
     local function on_chosen(server)
         Settings.set_cloud_server(server)
         H.clear_status_snapshot(plugin)
-        if touchmenu_instance then touchmenu_instance:updateItems() end
+        if touchmenu_instance then
+            -- updateItems() alone repaints the CURRENT item_table without
+            -- re-running the sub_item_table_func that built it, so rows that
+            -- exist only when a destination is configured (the wake toggles)
+            -- would not appear until the submenu is re-entered.  Rebuild first.
+            touchmenu_instance.item_table = T.menuCloudConfig(plugin)
+            touchmenu_instance:updateItems()
+        end
         local label = (server and (server.type or server.provider)) or "?"
         UIManager:show(InfoMessage:new{
             text    = string.format(_("Cloud destination set: %s.\nRestart KOReader if uploads don't appear."), label),
@@ -380,7 +387,12 @@ function T.clearCloudDestination(plugin, touchmenu_instance)
         ok_callback = function()
             Settings.clear_cloud_server()
             H.clear_status_snapshot(plugin)
-            if touchmenu_instance then touchmenu_instance:updateItems() end
+            if touchmenu_instance then
+                -- Rebuild, not just repaint: destination-conditional rows (the
+                -- wake toggles) must disappear right away — see on_chosen above.
+                touchmenu_instance.item_table = T.menuCloudConfig(plugin)
+                touchmenu_instance:updateItems()
+            end
             UIManager:show(InfoMessage:new{
                 text = _("Cloud destination cleared."), timeout = 3,
             })
@@ -487,7 +499,7 @@ end
 
 --- Cloud config submenu — destination / backend / clear / delay / test.
 function T.menuCloudConfig(plugin)
-    return {
+    local items = {
         {
             text_func = function()
                 local desc = Settings.describe_cloud_server()
@@ -538,8 +550,66 @@ function T.menuCloudConfig(plugin)
                 _("Tap to check the cloud destination is configured.")),
             callback       = H.safe("Test cloud",
                 function() T.testCloudConnection(plugin) end),
+            separator      = true,
         },
     }
+
+    -- codex 552: only surface the wake toggles once a cloud DESTINATION exists.
+    -- This submenu is reachable whenever Cloud is ON, but the wake gate no-ops
+    -- until a server is configured, so showing the toggles before then is a dead
+    -- switch.  Rebuilt on every open (sub_item_table_func), so setting the
+    -- destination reveals them at once.  Cloud only: the wake is justified by a
+    -- client-server push (an offline push's retry is cancelled by shutdown, so
+    -- the state may never leave the device); Syncthing is peer-to-peer +
+    -- daemon-backed and out of scope.  Both OFF by default, separate.
+    -- Option A (d0nizam, wake-push design): require BOTH a READY transport and a
+    -- SYNCHRONOUS provider -- exactly the wake path's own precondition, so a shown
+    -- toggle always maps to a wake that can actually fire.
+    --   * _hasConfiguredTransportForWakePush(): cloud.state == "ready" (server
+    --     picked, backend present and able to sync).  is_cloud_configured() alone
+    --     is too weak -- a syncservice FALLBACK still reports the provider with no
+    --     usable backend (e.g. FTP-only config), so the toggle would be a dead
+    --     switch the wake gate later rejects, promising a sync that never runs
+    --     (codex 3219).
+    --   * _isCloudPushSynchronous(): only SyncService can keep the "delivery
+    --     before sleep" promise; the async "Cloud storage+" backend dispatches via
+    --     UIManager:nextTick, so the transfer rides a loop the blocking pre-sleep
+    --     wait can't run.  HIDE for async (not grey): greying reads as "your
+    --     provider should support this," when the feature doesn't apply at all.
+    if plugin:_hasConfiguredTransportForWakePush()
+            and plugin:_isCloudPushSynchronous() then
+        table.insert(items, H.makeBoolToggle(plugin,
+            "wake_wifi_for_sync", "syncery_wake_wifi_for_sync",
+            _("Wake Wi-Fi for cloud push on close"),
+            _("When you close a book (or quit KOReader) while offline, bring Wi-Fi "
+            .. "up and wait for it before pushing your latest position and "
+            .. "annotations to the cloud — so they actually reach the server "
+            .. "instead of being silently held back until some later session.\n\n"
+            .. "Respects your device's \"when network is needed\" setting: it only "
+            .. "turns Wi-Fi on if that is set to turn it on automatically (not "
+            .. "prompt or ignore).  Off by default.  Closing can pause for up to "
+            .. "~30 seconds worst-case while the connection comes up and the push "
+            .. "completes.")))
+
+        table.insert(items, H.makeBoolToggle(plugin,
+            "wake_wifi_on_suspend", "syncery_wake_wifi_on_suspend",
+            _("Wake Wi-Fi for cloud push on sleep"),
+            _("When the device goes to sleep while offline, bring Wi-Fi up and push "
+            .. "your latest position and annotations to the cloud before it actually "
+            .. "sleeps — so they reach the server instead of waiting for the next "
+            .. "time you open this book.\n\n"
+            .. "The sleep screen appears right away, but the device finishes the "
+            .. "handover behind it and only then really sleeps, so sleeping can take "
+            .. "up to ~30 seconds worst-case while the connection comes up and the "
+            .. "push completes.  If we raised Wi-Fi, it is turned back off again "
+            .. "afterwards.\n\n"
+            .. "Unlike closing a book, sleep happens automatically and often (every "
+            .. "idle timeout), so waking Wi-Fi each time costs battery — enable only "
+            .. "if reliable sync-on-sleep is worth that to you.  Respects your "
+            .. "device's \"when network is needed\" setting.  Off by default.")))
+    end
+
+    return items
 end
 
 
@@ -797,7 +867,12 @@ function T.build(plugin)
             _("Enable Cloud storage first."),
             _("Tap to set up Dropbox / WebDAV / FTP and adjust upload timing.")),
         sub_item_table_func = function() return T.menuCloudConfig(plugin) end,
+        separator           = true,
     })
+
+    -- The opt-in wake-push toggles (close / sleep) now live UNDER the Cloud
+    -- section in menuCloudConfig, so they hide when Cloud isn't configured
+    -- (they are Cloud-only).  See T.menuCloudConfig.
 
     return items
 end

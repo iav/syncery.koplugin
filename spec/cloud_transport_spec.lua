@@ -176,6 +176,33 @@ do
 end
 
 
+-- codex/fix-2: a syntactic destination but NO backend available (a build without
+-- "Cloud storage+" AND without the built-in syncservice) must report
+-- unavailable — the wake gate must not raise Wi-Fi for a push that can't dispatch
+-- through any backend.  server_is_syncable alone would say "webdav is fine".
+do
+    local t = Transport.new({
+        settings_reader = settings_for(valid_settings()),
+        select_provider = function()
+            return {
+                provider = {
+                    id                 = function() return "syncservice" end,
+                    is_available       = function() return false end,
+                    syncable_providers = function() return { webdav = true } end,
+                },
+                active_id = "syncservice",
+                fell_back = true,
+            }
+        end,
+    })
+    h.assert_false(t.is_available(),
+        "fix-2: no real cloud backend -> unavailable despite a saved server")
+    h.assert_false(t.status().available, "fix-2: status available=false")
+    -- (surfacing this as a distinct backend-unavailable state in the UI is
+    -- deferred to the cloud-state refactor PR.)
+end
+
+
 do
     -- COLLAPSE GUARD: is_available() reads the canonical `syncery_use_cloud`
     -- key, NOT the old `syncery_sync_via_cloud` mirror.  Wizard-divergence

@@ -307,6 +307,19 @@ function M.make_fake_plugin(opts)
     plugin._resetAll           = record("_resetAll")
     plugin._configureKOSyncthingPlusConflicts = record("_configureKOSyncthingPlusConflicts")
     plugin._isSyncthingPluginInstalled = function() return opts.kosyncthing_installed or false end
+    -- Active cloud provider synchronous? (syncservice).  Default true; async
+    -- (Cloud storage+) via cloud_sync=false.  Gates the wake toggles (Option A).
+    plugin._isCloudPushSynchronous = function() return opts.cloud_sync ~= false end
+    -- Cloud transport ready for wake-push? (real impl: cloud.state == "ready").
+    -- Explicit override via wake_transport_ready; otherwise mirror whether a cloud
+    -- destination is configured (the closest proxy for a usable transport in the
+    -- fake), read live so install_stubs' is_cloud_configured drives it.  With
+    -- _isCloudPushSynchronous, gates the wake toggles (Option A / codex 3219).
+    plugin._hasConfiguredTransportForWakePush = function()
+        if opts.wake_transport_ready ~= nil then return opts.wake_transport_ready end
+        local S = package.loaded["syncery_settings"]
+        return S ~= nil and S.is_cloud_configured() == true
+    end
     plugin._syncBookViaOrchestrator = record("_syncBookViaOrchestrator")
     plugin.clearAnnotationCache = record("clearAnnotationCache")
     plugin._deleteAllAnnotationsForCurrentBook = record("_deleteAllAnnotationsForCurrentBook")
