@@ -823,6 +823,9 @@ function Syncery:init()
         self.db_sync_interval_min  = Settings.get_db_sync_interval_min()
         self.jump_mode             = G_reader_settings:readSetting("syncery_jump_mode") or "ask"
         self.adapt_highlight_style = read_bool("syncery_adapt_highlight_style", false)
+        -- Mid-session [Reload] prompt for a peer's annotations / font & layout:
+        -- default ON (d0nizam, issue #11). OFF = silent, lands on next open.
+        self.reload_prompt         = read_bool("syncery_reload_prompt",          true)
         self.sync_metadata         = read_bool("syncery_sync_metadata",          false)
         self.sync_status           = read_bool("syncery_sync_status",            true)
         self.sync_rating           = read_bool("syncery_sync_rating",            true)
@@ -2722,6 +2725,9 @@ function Syncery:_maybeOfferReload()
     local has_ann = ann_count ~= nil and ann_count > 0
     if not has_ann and not render then return end
     if not (self.ui and self.ui.reloadDocument) then return end
+    -- Opt-out (Advanced, default ON).  OFF = silent: merged content is already
+    -- staged and applies on next open, so skip the mid-session bar (issue #11).
+    if not self.reload_prompt then return end
 
     local text
     if has_ann and render then

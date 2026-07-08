@@ -947,6 +947,10 @@ msgstr ""
 msgid "Progress Browser"
 msgstr ""
 
+#: syncery_ui/menu/init.lua
+msgid "Prompt to reload for synced content"
+msgstr ""
+
 #: syncery_ui/menu/annotations_section.lua
 msgid "Push this book's handmade TOC"
 msgstr ""
@@ -1688,6 +1692,10 @@ msgid ""
 "Never — stay put; this device is never moved by another.\n"
 "\n"
 "Either way you can still jump on demand from \"Jump to another device now…\" below.  Undo the last jump within 60 seconds from Menu → Syncery → This book → Undo last jump."
+msgstr ""
+
+#: syncery_ui/menu/init.lua
+msgid "When another device's annotations or font & layout arrive while you're reading, offer a [Reload] to apply them now. Off: they apply silently the next time you open the book."
 msgstr ""
 
 #: syncery_ui/menu/transport_section.lua

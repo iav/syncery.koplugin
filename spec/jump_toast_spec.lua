@@ -117,6 +117,15 @@ do
             "wiring: M.dismiss tears down EVERY lane on document leave")
         h.assert_true(asrc:find("function M.defer", 1, true) == nil,
             "wiring: M.defer is gone (independent lanes replace the queue/drain)")
+        -- Lane overlap (finding C): the higher lane RESERVES the lower lane's
+        -- worst case up front, so the two never overlap in any appearance order
+        -- -- and NO shown bar is re-laid-out (a jerk under a touch mis-routes it).
+        h.assert_true(asrc:find("function lower_lane_reserve", 1, true) ~= nil,
+            "geometry: a fixed worst-case reserve lifts the higher lane")
+        h.assert_true(asrc:find("below_h + lower_lane_reserve()", 1, true) ~= nil,
+            "geometry: the lift reserves the lower lane's worst case, not this bar's own height")
+        h.assert_true(asrc:find("_lane_heights", 1, true) == nil,
+            "geometry: no last-shown-height fallback (it under-reserved a taller later lane 0)")
     end
     -- Reload affordance: when checkRemote applies changes that are only visible
     -- at the next open (annotations -- live list not mutated mid-session; AND
@@ -128,6 +137,22 @@ do
         "wiring: the reload offer helper exists")
     h.assert_true(src:find("self.ui:reloadDocument()", 1, true) ~= nil,
         "wiring: the [Reload] button triggers ReaderUI:reloadDocument")
+    -- Opt-out (issue #11): default ON.  When off, _maybeOfferReload returns
+    -- before the bar -- merged content still lands on the next open (already
+    -- staged), just no mid-session interruption.
+    h.assert_true(src:find("if not self.reload_prompt then return end", 1, true) ~= nil,
+        "wiring: _maybeOfferReload honours the reload_prompt opt-out")
+    h.assert_true(src:find('read_bool%("syncery_reload_prompt",%s+true%)') ~= nil,
+        "wiring: reload_prompt loads default ON")
+    do
+        local mf = io.open("syncery_ui/menu/init.lua", "r")
+            or io.open("../syncery_ui/menu/init.lua", "r")
+        h.assert_true(mf ~= nil, "audit: could open menu/init.lua")
+        local msrc = mf and mf:read("*a") or ""
+        if mf then mf:close() end
+        h.assert_true(msrc:find('makeBoolToggle(plugin, "reload_prompt", "syncery_reload_prompt"', 1, true) ~= nil,
+            "wiring: Advanced menu exposes the reload-prompt opt-out toggle")
+    end
     h.assert_true(src:find("self._pending_ann_reload = result.annotations_pulled", 1, true) ~= nil,
         "wiring: a remote annotation pull arms the reload offer (annotations_pulled)")
     -- Font & layout (render) changes arm the SAME affordance -- they too are only

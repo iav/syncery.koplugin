@@ -81,14 +81,24 @@ local VIEW_KEY_BASE = "syncery_action_bar"
 local ZONE_ID_BASE  = "syncery_action_bar_tap"
 local LANE_COUNT    = 2  -- lane 0 = jump/undo (bottom), lane 1 = reload (above)
 
--- Last SHOWN frame height per lane, so a higher lane lifts by the real height
--- of the bar underneath (message line counts differ per bar).  A slightly
--- stale height (bar already dismissed) only lifts a little high -- harmless.
-local _lane_heights = {}
 -- Per-lane view-module / touch-zone identity so the lanes are INDEPENDENT:
 -- showing the reload (lane 1) never preempts the jump (lane 0), or vice versa.
 local function view_key(lane) return VIEW_KEY_BASE .. (lane or 0) end
 local function zone_id(lane)  return ZONE_ID_BASE  .. (lane or 0) end
+
+-- Worst-case height of a LOWER lane, so the lane above reserves it up front and
+-- the two never overlap in any appearance order -- WITHOUT re-laying-out a shown
+-- bar.  Re-layout is a non-starter on touch: a bar jerking up under a moving
+-- finger drops the tap on empty space or the wrong button.  Fixed reserve costs
+-- only a lone reload floating a bit high (rare); a lone jump still sits at base.
+-- Lower bar = JumpToast.message, <=2 infofont lines, + frame chrome.
+local function lower_lane_reserve()
+    local face   = Font:getFace("infofont")
+    -- ~TextBoxWidget line height (round((1+0.3)*size)); round factor up for margin.
+    local line_h = math.ceil((face and face.size or 20) * 1.4)
+    local chrome = 2 * (Size.padding.default + Size.border.window + Size.margin.default)
+    return 2 * line_h + chrome
+end
 
 -- Lift the bar off the very bottom by this fraction of screen height, so the
 -- jump / undo / annotation bars all sit a bit higher (clear of the footer).
@@ -178,26 +188,21 @@ function ActionBar:init()
     self.button = button
     self.close_button = close_button
 
-    -- Lane STACKING: lane 0 sits at the base margin; each higher lane is lifted
-    -- clear of the lanes below, so multiple bars stack bottom-up without
-    -- overlapping -- the position-jump bar (lane 0) and the [Reload] content
-    -- affordance (lane 1) are INDEPENDENT axes (position vs content) and show
-    -- at the same time, one above the other.  Lane 1 lifts by the SHOWN lane-0
-    -- bar's height (falling back to its own): the old "the reload message is
-    -- always the longest" shortcut broke the moment the jump message grew a
-    -- second context line (independent review) -- the lift must track the bar
-    -- actually underneath, not assume relative lengths.
-    -- Span the screen MINUS that bottom margin for layout (consumes no input --
-    -- the view module is never in the input stack). BottomContainer centres and
-    -- bottom-anchors the frame within this shorter height, so the frame's bottom
-    -- edge lands at (screen_h - bottom_margin) -- lifting the whole bar.
+    -- Lane STACKING: lane 0 at base; a higher lane lifts clear of each lower
+    -- lane's RESERVED worst case (lower_lane_reserve) + a gap.  Reserving up
+    -- front means jump (lane 0) and reload (lane 1) never overlap in any order
+    -- AND no shown bar is ever moved (a jerk under a finger mis-routes the tap).
+    -- The reserve is constant, independent of this bar's height -- the old "lift
+    -- by own / by last-shown lane-0 height" shortcuts under-reserved a taller
+    -- later jump and overlapped.
+    -- BottomContainer bottom-anchors the frame in (screen_h - bottom_margin),
+    -- lifting the whole bar; the layout height consumes no input.
     local fsz           = frame:getSize()
     local lane          = self.lane or 0
     local lane_gap      = math.floor(screen_h * 0.02)
-    _lane_heights[lane] = fsz.h
     local below_h = 0
-    for l = 0, lane - 1 do
-        below_h = below_h + (_lane_heights[l] or fsz.h) + lane_gap
+    for _l = 0, lane - 1 do
+        below_h = below_h + lower_lane_reserve() + lane_gap
     end
     local bottom_margin = math.floor(screen_h * BOTTOM_MARGIN_RATIO) + below_h
     self[1] = BottomContainer:new{
