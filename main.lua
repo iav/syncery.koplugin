@@ -575,7 +575,7 @@ local PREFERENCE_KEYS = {
     "syncery_sync_margins",
     "syncery_sync_extensions",
     -- behaviour / display
-    "syncery_jump_mode", "syncery_adapt_highlight_style",
+    "syncery_jump_mode", "syncery_adapt_highlight_style", "syncery_reload_prompt",
     "syncery_wake_wifi_for_sync", "syncery_wake_wifi_on_suspend",
     -- storage + diagnostics
     "syncery_storage_mode",
@@ -2771,6 +2771,52 @@ function Syncery:_maybeOfferReload()
 end
 
 
+--- Would a jump to `best` actually land the reader on a DIFFERENT rendered page
+--- than the one they are on now?
+---
+--- should_prompt (jump_policy) knows only percent + xpath, so a peer that merely
+--- ANNOTATED the reader's CURRENT page -- same page, different DOM anchor --
+--- passes its substantive-delta gate yet the jump moves nothing.  That is not
+--- just prompt noise: under auto-accept it OSCILLATES.  Two devices parked on the
+--- same page each re-stamp their timestamp/revision on every save (an annotation
+--- counts), so each perpetually reads the other as "newer" and jumps to it, which
+--- saves again -- an endless mutual jerk between readers already on the same page.
+--- Suppressing the prompt when the page does not change breaks that loop.
+---
+--- Page NUMBERS are not comparable across devices: different screen/font settings
+--- repaginate the book (e.g. 1085 pages on one device, 1036 on another), so the
+--- peer's stored page is meaningless here.  Resolve the peer's xpath in OUR
+--- document and compare LOCAL pages instead.  Paged formats (PDF/CBZ) have fixed,
+--- cross-device pagination and no xpath, so their stored page IS comparable.
+---
+--- Fails OPEN (returns true = "would move") on any resolution gap, so a lookup
+--- failure never SILENCES a real jump -- it only ever removes a proven no-op.
+function Syncery:_jumpChangesPage(state, best)
+    local doc = self.ui and self.ui.document
+    if state.is_rolling then
+        -- Reflowable: page numbers are device-local, so ONLY an xpath resolved in
+        -- OUR document is a valid page comparison.  Any gap -- no xpath on the
+        -- entry, unresolvable anchor, no document -- fails OPEN (assume it moves),
+        -- so a percent-based jump that already passed should_prompt is never
+        -- silenced by a device-local page coincidence.
+        if doc and type(best.xpath) == "string" and best.xpath ~= ""
+                and ProgressBridge.xpointer_resolves(doc, best.xpath) then
+            local ok_t, target = pcall(doc.getPageFromXPointer, doc, best.xpath)
+            local ok_c, cur    = pcall(doc.getCurrentPage, doc)
+            if ok_t and ok_c and type(target) == "number" and type(cur) == "number" then
+                return target ~= cur
+            end
+        end
+        return true  -- rolling without a resolvable xpath: fail open
+    end
+    -- Paged doc (PDF/CBZ): fixed cross-device pagination, so the stored page
+    -- number IS comparable.
+    local rp, sp = tonumber(best.page), tonumber(state.page)
+    if rp and sp then return rp ~= sp end
+    return true
+end
+
+
 function Syncery:checkRemote()
     if self.destroyed or self.is_saving or self.sync_state == "syncing" or self._active_sync_box then
         return
@@ -2878,7 +2924,8 @@ function Syncery:checkRemote()
         local entry = fresh[handoff.device_id]
         if entry and JumpPolicy.should_prompt(
                 entry, handoff.device_id, self.acked_remote_revs,
-                state.percent, state.xpath) then
+                state.percent, state.xpath)
+                and self:_jumpChangesPage(state, entry) then
             local hd_id  = handoff.device_id
             local hd_rev = entry.revision or 0
             local shown  = self:_promptJump{
@@ -2905,8 +2952,9 @@ function Syncery:checkRemote()
             -- content, so there is no pending reload to offer this tick.
             return
         end
-        -- Stale handoff (caught up / no substantive delta): fall through to the
-        -- normal path, which finds no forward jump and offers nothing.
+        -- Stale handoff (caught up / no substantive delta / same rendered page):
+        -- fall through to the normal path, which re-evaluates and offers nothing
+        -- (or just the reload) rather than replaying an outdated jump.
     end
 
     -- Pure recency, gated only by the session baseline: if a peer's timestamp
@@ -2939,6 +2987,16 @@ function Syncery:checkRemote()
             state.percent, state.xpath) then
         -- Jump suppressed (already acked / no substantive delta) -- offer the
         -- annotation reload instead.
+        self:_maybeOfferReload()
+        return
+    end
+
+    -- Suppress a jump that would not change the rendered page: a peer that only
+    -- annotated the reader's CURRENT page passes should_prompt (its xpath
+    -- differs) but jumping there moves nothing -- and under auto-accept two
+    -- same-page devices jerk each other in a loop (see _jumpChangesPage).  The
+    -- peer's annotation is still delivered via the reload offer.
+    if not self:_jumpChangesPage(state, best) then
         self:_maybeOfferReload()
         return
     end

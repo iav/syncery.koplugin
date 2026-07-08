@@ -86,18 +86,25 @@ local LANE_COUNT    = 2  -- lane 0 = jump/undo (bottom), lane 1 = reload (above)
 local function view_key(lane) return VIEW_KEY_BASE .. (lane or 0) end
 local function zone_id(lane)  return ZONE_ID_BASE  .. (lane or 0) end
 
+-- Bolder frame border than the stock window border (Size.border.window is a
+-- faint ~1.5px hairline on e-ink).  With two bars STACKED (reload over jump) a
+-- crisp outline is what visually separates them and lifts each clear of the page
+-- text showing through the gap -- the "divider line" the taller reserve needs.
+local BAR_BORDER = Screen:scaleBySize(3)
+
 -- Worst-case height of a LOWER lane, so the lane above reserves it up front and
 -- the two never overlap in any appearance order -- WITHOUT re-laying-out a shown
 -- bar.  Re-layout is a non-starter on touch: a bar jerking up under a moving
 -- finger drops the tap on empty space or the wrong button.  Fixed reserve costs
 -- only a lone reload floating a bit high (rare); a lone jump still sits at base.
--- Lower bar = JumpToast.message, <=2 infofont lines, + frame chrome.
+-- Lower bar = JumpToast.message; reserve up to THREE infofont lines (a long
+-- device label + chapter title can wrap past two on a narrow screen) + chrome.
 local function lower_lane_reserve()
     local face   = Font:getFace("infofont")
     -- ~TextBoxWidget line height (round((1+0.3)*size)); round factor up for margin.
     local line_h = math.ceil((face and face.size or 20) * 1.4)
-    local chrome = 2 * (Size.padding.default + Size.border.window + Size.margin.default)
-    return 2 * line_h + chrome
+    local chrome = 2 * (Size.padding.default + BAR_BORDER + Size.margin.default)
+    return 3 * line_h + chrome
 end
 
 -- Lift the bar off the very bottom by this fraction of screen height, so the
@@ -177,7 +184,7 @@ function ActionBar:init()
 
     local frame = FrameContainer:new{
         background = Blitbuffer.COLOR_WHITE,
-        bordersize = Size.border.window,
+        bordersize = BAR_BORDER,
         radius     = Size.radius.window,
         padding    = frame_pad,
         margin     = Size.margin.default,
@@ -238,7 +245,7 @@ function ActionBar:init()
     -- case the two rects are split at the MIDPOINT of the inter-button gap so
     -- they meet without overlapping (an overlap would mis-route a boundary tap
     -- to whichever zone registered first).  Tune on-device if a target feels off.
-    local inset = Size.margin.default + Size.border.window + frame_pad
+    local inset = Size.margin.default + BAR_BORDER + frame_pad
     local bsz   = button:getSize()
     local btn_y = frame_y + inset + math.floor(((fsz.h - 2 * inset) - bsz.h) / 2)
 

@@ -99,6 +99,21 @@ do
     -- gone.
     h.assert_true(src:find("jump bar IS up", 1, true) == nil,
         "regression: jump no longer drops the pending reload (own lane instead)")
+    -- Oscillation guard (same-page no-op jump): after should_prompt passes,
+    -- checkRemote suppresses the prompt when the jump would NOT change the
+    -- rendered page.  Without it two devices parked on the same page each
+    -- re-stamp recency every save and, under auto-accept, jump to each other
+    -- forever.  The check resolves the peer's xpath in OUR document (page
+    -- numbers are not comparable across devices) and fails OPEN, so a resolution
+    -- gap never silences a real jump.
+    h.assert_true(src:find("function Syncery:_jumpChangesPage", 1, true) ~= nil,
+        "wiring: the same-page oscillation guard exists")
+    h.assert_true(src:find("if not self:_jumpChangesPage(state, best) then", 1, true) ~= nil,
+        "wiring: checkRemote suppresses a no-op jump after should_prompt")
+    h.assert_true(src:find("getPageFromXPointer", 1, true) ~= nil,
+        "wiring: the guard resolves the peer xpath to a LOCAL page")
+    h.assert_true(src:find("rolling without a resolvable xpath: fail open", 1, true) ~= nil,
+        "wiring: the guard fails OPEN for rolling docs (device-local pages never silence a real jump)")
 
     -- The action bar stacks two independent lanes: per-lane view-module / touch-
     -- zone identity (view_key), M.show places the bar on spec.lane and preempts
@@ -202,13 +217,14 @@ do
     -- captures whether _promptJump actually raised a bar (true = ask/auto bar
     -- shown; false = "never" declined) and offers the reload on the declined
     -- path instead of dropping it -- so "never" cannot silently swallow incoming
-    -- annotations / render until the next open.  That makes THREE no-jump-bar
-    -- reload paths: `not best`, `not should_prompt`, and "never".
+    -- annotations / render until the next open.  That makes FOUR no-jump-bar
+    -- reload paths: `not best`, `not should_prompt`, the same-page oscillation
+    -- guard (`not _jumpChangesPage`), and "never".
     h.assert_true(src:find("local jump_shown = self:_promptJump", 1, true) ~= nil,
         "wiring: checkRemote captures whether _promptJump raised a jump bar")
     local reload_calls = select(2, src:gsub("self:_maybeOfferReload%(%)", ""))
-    h.assert_equal(reload_calls, 3,
-        "wiring: reload offered at all three no-jump-bar paths (not best / not should_prompt / 'never')")
+    h.assert_equal(reload_calls, 4,
+        "wiring: reload offered at all no-jump-bar paths (not best / not should_prompt / same-page / 'never')")
     -- jump_mode "auto" short-circuits straight to the jump.
     h.assert_true(src:find('self.jump_mode == "auto"', 1, true) ~= nil,
         "wiring: _promptJump auto-jumps in 'auto' mode")
