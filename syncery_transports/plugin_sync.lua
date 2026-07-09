@@ -171,7 +171,7 @@ end
 -- pushOpenedBooks -- upload books tracked in the .opened worklist.
 -- Read — dedupe — push each unique book — delete (or keep failed retry).
 -- ----------------------------------------------------------------------------
-local function pushOpenedBooks(plugin)
+local function pushOpenedBooks(plugin, info_fn)
     local path = plugin.state_dir .. ".opened"
     local f = io.open(path, "rb")
     if not f then return end
@@ -189,16 +189,49 @@ local function pushOpenedBooks(plugin)
     if not plugin:_isCloudReachable() then
         plugin._cloud_wifi_backoff:attempt{
             label = "pushOpenedBooks retry",
-            run   = function() pushOpenedBooks(plugin) end,
+            run   = function() pushOpenedBooks(plugin, info_fn) end,
         }
         return
     end
 
+    -- Deterministic order: needed for the i/total progress numbering
+    -- below, and keeps behaviour reproducible under test.
+    local books = {}
+    for book in pairs(opened) do books[#books + 1] = book end
+    table.sort(books)
+
+    -- info_fn is supplied ONLY by sync_all's interactive Trapper wrap.
+    -- The teardown.lua call site passes none, deliberately: that flush
+    -- must stay synchronous/inline (Step 5 shuts the transport down
+    -- right after, with no future UIManager tick for a suspended
+    -- Trapper coroutine to resume on -- see teardown.lua Step 3), so
+    -- it gets byte-identical behaviour to before this change, and
+    -- plugin.destroyed is still false at that point anyway (it's set
+    -- in the SAME synchronous flush, in the step after this one).
     local failed = {}
-    for book in pairs(opened) do
+    local stopped_at
+    for i, book in ipairs(books) do
+        if info_fn then
+            if plugin.destroyed then
+                stopped_at = i
+                break
+            end
+            if not info_fn(string.format(_("Uploading %d/%d..."), i, #books)) then
+                stopped_at = i
+                break
+            end
+        end
         local ok, status = pcall(PluginSync.do_cloud_upload, plugin, { file = book })
         if not ok or status == "deferred" then
             table.insert(failed, book)
+        end
+    end
+    if stopped_at then
+        -- Abort (or plugin destroyed mid-loop): books from here on were
+        -- never attempted -- they must stay queued, not be dropped as
+        -- if they'd synced.
+        for i = stopped_at, #books do
+            table.insert(failed, books[i])
         end
     end
 
@@ -230,49 +263,220 @@ function PluginSync.sync_all(plugin, opts)
     plugin._sync_all_in_progress = true
 
     local ok, err = pcall(function()
-        -- Phase 1: Push (unchanged)
         if plugin.ui and plugin.ui.document then
             plugin:doSave(true, false)
         end
-        pushOpenedBooks(plugin)
 
-        -- Phase 2: Pull via Merkle manifest
-        local Settings = require("syncery_settings")
-        local server = Settings.get_cloud_server()
-        if not server then
-            return
-        end
+        -- Push (Phase 1) and pull (Phase 2) share ONE Trapper:wrap
+        -- spanning both, instead of two separate back-to-back wraps.
+        -- Trapper:wrap can return EARLY: the first yield inside the
+        -- wrapped function (any Trapper:info() call) hands control
+        -- back to UIManager, and the rest of the function resumes
+        -- later on a subsequent tick (ui.trapper docs: "This call
+        -- should be the last step in some event processing code, as
+        -- it may return early"). Two separate wraps in sequence would
+        -- let Phase 2's manifest/pull network calls start running
+        -- while Phase 1's push loop might still be suspended mid-book
+        -- -- the same "code placed AFTER Trapper:wrap may execute
+        -- while the wrapped function is only half-done" class already
+        -- documented for this project (scattered-metadata advisory).
+        -- One wrap enclosing both phases means Phase 2 only starts
+        -- once Phase 1 has genuinely, fully returned.
+        local Trapper = require("ui/trapper")
+        Trapper:wrap(function()
+            Trapper:setPausedText(_("Sync paused."), _("Abort"), _("Continue"))
+            local info_fn = function(msg) return Trapper:info(msg) end
 
-        local listM = require("syncery_transports/cloud/list")
-        local CSProvider = require("syncery_transports/cloud/providers/cloudstorage_provider")
-        local cs = CSProvider.resolve_ui_instance(plugin.ui)
-        local Util = require("syncery_util")
-        local my_device = Util.get_device_id()
-        local cjson = require("json")
+            -- Phase 1: Push
+            pushOpenedBooks(plugin, info_fn)
+            if plugin.destroyed then return end
 
-        if not cs then
-            -- Fallback: no Cloud Storage+ plugin
-            local orch = plugin._transport and plugin._transport._orch
-            if not orch then return end
+            -- Phase 2: Pull via Merkle manifest
+            local Settings = require("syncery_settings")
+            local server = Settings.get_cloud_server()
+            if not server then
+                return
+            end
 
-            -- 2a. Generate and upload manifest via transport
-            local my_manifest = listM.generateManifest(plugin)
-            local fb_files_hash = nil
-            local fb_cache_path = nil
-            local fb_skip_upload = false
-            local fb_cached_peer_hash = nil
-            if my_manifest then
+            local listM = require("syncery_transports/cloud/list")
+            local CSProvider = require("syncery_transports/cloud/providers/cloudstorage_provider")
+            local cs = CSProvider.resolve_ui_instance(plugin.ui)
+            local Util = require("syncery_util")
+            local my_device = Util.get_device_id()
+            local cjson = require("json")
+
+            if not cs then
+                -- Fallback: no Cloud Storage+ plugin
+                local orch = plugin._transport and plugin._transport._orch
+                if not orch then return end
+
+                -- 2a. Generate and upload manifest via transport
+                local my_manifest = listM.generateManifest(plugin)
+                local fb_files_hash = nil
+                local fb_cache_path = nil
+                local fb_skip_upload = false
+                local fb_cached_peer_hash = nil
+                if my_manifest then
+                    local staging_dir = Util.state_dir() .. "cloud_staging/"
+                    require("util").makePath(staging_dir)
+                    fb_cache_path = staging_dir .. ".manifest_cache"
+                    local keys = {}
+                    for k in pairs(my_manifest.files) do table.insert(keys, k) end
+                    table.sort(keys)
+                    local h = sha2.md5; local ctx = h()
+                    for _, k in ipairs(keys) do ctx(k); ctx(my_manifest.files[k]) end
+                    fb_files_hash = ctx()
+                    local cached_our_hash = nil
+                    do local fh = io.open(fb_cache_path, "rb")
+                        if fh then
+                            local line = fh:read("*l")
+                            fh:close()
+                            if line then
+                                local pipe = line:find("|", 1, true)
+                                if pipe then
+                                    cached_our_hash = line:sub(1, pipe - 1)
+                                    fb_cached_peer_hash = line:sub(pipe + 1)
+                                else
+                                    cached_our_hash = line
+                                end
+                            end
+                        end
+                    end
+                    fb_skip_upload = (cached_our_hash == fb_files_hash)
+                    if not fb_skip_upload then
+                        local manifest_json = cjson.encode(my_manifest)
+                        local manifest_path = staging_dir .. "syncery-manifest-" .. my_device .. ".txt"
+                        local fh = io.open(manifest_path, "wb"); if fh then fh:write(manifest_json); fh:close() end
+                        orch:push_book("__manifest__", {
+                            payload = { kind = "manifest", book_id = my_device, content = manifest_json }
+                        }, { force = true })
+                    end
+                end
+
+                -- 2b. Discover peers from local staging files
+                local peers = {}
                 local staging_dir = Util.state_dir() .. "cloud_staging/"
                 require("util").makePath(staging_dir)
-                fb_cache_path = staging_dir .. ".manifest_cache"
+                local lfs = require("libs/libkoreader-lfs")
+                for f in lfs.dir(staging_dir) do
+                    local fh = io.open(staging_dir .. f, "rb")
+                    if fh then
+                        local content = fh:read("*a"); fh:close()
+                        if content then
+                            local ok_d, data = pcall(cjson.decode, content)
+                            if ok_d and data and data.entries then
+                                for device_id, _ in pairs(data.entries) do
+                                    if device_id ~= my_device then
+                                        peers[device_id] = true
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+
+                -- 2c. Download peer manifests, compare hashes, sync diff books
+                -- Deterministic order (needed for the i/total numbering below);
+                -- aborting mid-loop just means fewer peers get checked this
+                -- round -- unlike the .opened worklist there's no persistent
+                -- per-peer queue to preserve, the next Sync Now redoes the
+                -- whole manifest check regardless.
+                local peer_ids = {}
+                for device_id in pairs(peers) do peer_ids[#peer_ids + 1] = device_id end
+                table.sort(peer_ids)
+
+                local changed = {}
+                for pi, device_id in ipairs(peer_ids) do
+                    if plugin.destroyed then break end
+                    if not info_fn(string.format(_("Checking device %d/%d..."), pi, #peer_ids)) then
+                        break
+                    end
+                    local remote_manifest = nil
+                    orch:pull_book("__manifest__", {
+                        payload = { kind = "manifest", book_id = device_id, content = "{}" }
+                    }, function(results)
+                        local manifest_path = staging_dir .. "syncery-manifest-" .. device_id .. ".txt"
+                        local fh = io.open(manifest_path, "rb")
+                        if fh then
+                            local raw = fh:read("*a"); fh:close()
+                            local ok_d, data = pcall(cjson.decode, raw)
+                            if ok_d and data then remote_manifest = data end
+                        end
+                    end)
+                    if remote_manifest and remote_manifest.files and my_manifest and my_manifest.files then
+                        local peer_keys = {}
+                        for k in pairs(remote_manifest.files) do table.insert(peer_keys, k) end
+                        table.sort(peer_keys)
+                        local peer_h = sha2.md5; local peer_ctx = peer_h()
+                        for _, k in ipairs(peer_keys) do peer_ctx(k); peer_ctx(remote_manifest.files[k]) end
+                        local peer_hash = peer_ctx()
+                        do local fh = io.open(fb_cache_path, "wb")
+                            if fh then fh:write(fb_files_hash .. "|" .. peer_hash); fh:close() end
+                        end
+                        if not (fb_skip_upload and fb_cached_peer_hash == peer_hash) then
+                            for book_id, remote_hash in pairs(remote_manifest.files) do
+                                local my_hash = my_manifest.files[book_id]
+                                if my_hash and my_hash ~= remote_hash then
+                                    local path = listM.resolveBookPath(plugin, book_id)
+                                    if path then table.insert(changed, {id = book_id, path = path}) end
+                                end
+                            end
+                        end
+                    end
+                end
+
+                if #changed > 0 then
+                    local function _sync_fallback(changed_books)
+                        if not plugin:_isCloudReachable() then
+                            plugin._cloud_wifi_backoff:attempt{
+                                label = "sync_all fallback retry",
+                                run = function()
+                                    _sync_fallback(changed_books)
+                                end,
+                            }
+                            return
+                        end
+                        for i, book in ipairs(changed_books) do
+                            if plugin.destroyed then return end
+                            if not info_fn(string.format(_("Downloading %d/%d..."), i, #changed_books)) then
+                                break
+                            end
+                            local ok, result = pcall(PluginSync.do_cloud_upload, plugin, { file = book.path })
+                            if result == "deferred" then return end
+                        end
+                    end
+                    _sync_fallback(changed)
+                end
+
+                Settings.set_last_sync_all_ts(os.time())
+                return
+            end
+
+            -- Plugin path: Cloud Storage+ available
+            if not cs.providers and cs.getProviders then cs:getProviders() end
+            local provider = cs.providers and cs.providers[server.type]
+            if not provider then return end
+            provider.base = server
+
+            -- Refresh Dropbox access token (no-op for WebDAV/FTP)
+            pcall(function() provider:genAccessToken() end)
+
+            -- 2a. Generate and upload OUR manifest
+            local my_manifest = listM.generateManifest(plugin)
+            local pl_files_hash = nil
+            local pl_cache_path = nil
+            local pl_skip_upload = false
+            local pl_cached_peer_hash = nil
+            if my_manifest then
                 local keys = {}
                 for k in pairs(my_manifest.files) do table.insert(keys, k) end
                 table.sort(keys)
                 local h = sha2.md5; local ctx = h()
                 for _, k in ipairs(keys) do ctx(k); ctx(my_manifest.files[k]) end
-                fb_files_hash = ctx()
+                pl_files_hash = ctx()
+                pl_cache_path = Util.state_dir() .. "cloud_staging/.manifest_cache"
                 local cached_our_hash = nil
-                do local fh = io.open(fb_cache_path, "rb")
+                do local fh = io.open(pl_cache_path, "rb")
                     if fh then
                         local line = fh:read("*l")
                         fh:close()
@@ -280,227 +484,92 @@ function PluginSync.sync_all(plugin, opts)
                             local pipe = line:find("|", 1, true)
                             if pipe then
                                 cached_our_hash = line:sub(1, pipe - 1)
-                                fb_cached_peer_hash = line:sub(pipe + 1)
+                                pl_cached_peer_hash = line:sub(pipe + 1)
                             else
                                 cached_our_hash = line
                             end
                         end
                     end
                 end
-                fb_skip_upload = (cached_our_hash == fb_files_hash)
-                if not fb_skip_upload then
-                    local manifest_json = cjson.encode(my_manifest)
-                    local manifest_path = staging_dir .. "syncery-manifest-" .. my_device .. ".txt"
-                    local fh = io.open(manifest_path, "wb"); if fh then fh:write(manifest_json); fh:close() end
-                    orch:push_book("__manifest__", {
-                        payload = { kind = "manifest", book_id = my_device, content = manifest_json }
-                    }, { force = true })
+                pl_skip_upload = (cached_our_hash == pl_files_hash)
+                if not pl_skip_upload then
+                    listM.uploadManifest(plugin, provider, server, my_manifest)
                 end
             end
 
-            -- 2b. Discover peers from local staging files
-            local peers = {}
-            local staging_dir = Util.state_dir() .. "cloud_staging/"
-            require("util").makePath(staging_dir)
-            local lfs = require("libs/libkoreader-lfs")
-            for f in lfs.dir(staging_dir) do
-                local fh = io.open(staging_dir .. f, "rb")
-                if fh then
-                    local content = fh:read("*a"); fh:close()
-                    if content then
-                        local ok_d, data = pcall(cjson.decode, content)
-                        if ok_d and data and data.entries then
-                            for device_id, _ in pairs(data.entries) do
-                                if device_id ~= my_device then
-                                    peers[device_id] = true
+            -- 2b. List cloud directory for all manifest files
+            local ok_list, entries = pcall(provider.listFolder, server.url, true)
+            if not ok_list or not entries then
+                return
+            end
+
+            -- 2c/2d. Collect all peer manifests from the listing
+            local manifests_to_check = {}
+            for _, e in ipairs(entries) do
+                local device_id = e.text:match("^syncery%-manifest%-(.+)%.txt$")
+                if device_id and device_id ~= my_device then
+                    manifests_to_check[device_id] = true
+                end
+            end
+            -- 2e. Download each remote manifest, compare hashes, build delta list
+            -- Deterministic order (needed for the i/total numbering below);
+            -- aborting mid-loop just means fewer peers get checked this
+            -- round -- there's no persistent per-peer queue to preserve,
+            -- the next Sync Now redoes the whole manifest check regardless.
+            local peer_ids = {}
+            for device_id in pairs(manifests_to_check) do peer_ids[#peer_ids + 1] = device_id end
+            table.sort(peer_ids)
+
+            local changed = {}
+            for pi, device_id in ipairs(peer_ids) do
+                if plugin.destroyed then break end
+                if not info_fn(string.format(_("Checking device %d/%d..."), pi, #peer_ids)) then
+                    break
+                end
+                local remote = listM.downloadManifest(plugin, provider, server, device_id)
+                if remote and remote.files and my_manifest and my_manifest.files then
+                    local peer_keys = {}
+                    for k in pairs(remote.files) do table.insert(peer_keys, k) end
+                    table.sort(peer_keys)
+                    local peer_h = sha2.md5; local peer_ctx = peer_h()
+                    for _, k in ipairs(peer_keys) do peer_ctx(k); peer_ctx(remote.files[k]) end
+                    local peer_hash = peer_ctx()
+                    do local fh = io.open(pl_cache_path, "wb")
+                        if fh then fh:write(pl_files_hash .. "|" .. peer_hash); fh:close() end
+                    end
+                    if not (pl_skip_upload and pl_cached_peer_hash == peer_hash) then
+                        for book_id, remote_hash in pairs(remote.files) do
+                            local my_hash = my_manifest.files[book_id]
+                            if my_hash and my_hash ~= remote_hash then
+                                local path = listM.resolveBookPath(plugin, book_id)
+                                if path then
+                                    table.insert(changed, {id = book_id, path = path})
                                 end
                             end
                         end
                     end
                 end
             end
+            -- 2e. Sync changed books
+            local total = #changed
 
-            -- 2c. Download peer manifests, compare hashes, sync diff books
-            local changed = {}
-            for device_id, _ in pairs(peers) do
-                local remote_manifest = nil
-                orch:pull_book("__manifest__", {
-                    payload = { kind = "manifest", book_id = device_id, content = "{}" }
-                }, function(results)
-                    local manifest_path = staging_dir .. "syncery-manifest-" .. device_id .. ".txt"
-                    local fh = io.open(manifest_path, "rb")
-                    if fh then
-                        local raw = fh:read("*a"); fh:close()
-                        local ok_d, data = pcall(cjson.decode, raw)
-                        if ok_d and data then remote_manifest = data end
+            local function sync_changed(changed_books)
+                for i, book in ipairs(changed_books) do
+                    if plugin.destroyed then return end
+                    if not info_fn(string.format(_("Downloading %d/%d..."), i, total)) then
+                        break
                     end
-                end)
-                if remote_manifest and remote_manifest.files and my_manifest and my_manifest.files then
-                    local peer_keys = {}
-                    for k in pairs(remote_manifest.files) do table.insert(peer_keys, k) end
-                    table.sort(peer_keys)
-                    local peer_h = sha2.md5; local peer_ctx = peer_h()
-                    for _, k in ipairs(peer_keys) do peer_ctx(k); peer_ctx(remote_manifest.files[k]) end
-                    local peer_hash = peer_ctx()
-                    do local fh = io.open(fb_cache_path, "wb")
-                        if fh then fh:write(fb_files_hash .. "|" .. peer_hash); fh:close() end
-                    end
-                    if not (fb_skip_upload and fb_cached_peer_hash == peer_hash) then
-                        for book_id, remote_hash in pairs(remote_manifest.files) do
-                            local my_hash = my_manifest.files[book_id]
-                            if my_hash and my_hash ~= remote_hash then
-                                local path = listM.resolveBookPath(plugin, book_id)
-                                if path then table.insert(changed, {id = book_id, path = path}) end
-                            end
-                        end
-                    end
+                    local ok, result = pcall(PluginSync.do_cloud_upload, plugin, { file = book.path })
+                    if result == "deferred" then return end
                 end
             end
 
-            if #changed > 0 then
-                local function _sync_fallback(changed_books, info_fn)
-                    if not plugin:_isCloudReachable() then
-                        plugin._cloud_wifi_backoff:attempt{
-                            label = "sync_all fallback retry",
-                            run = function()
-                                _sync_fallback(changed_books, info_fn)
-                            end,
-                        }
-                        return
-                    end
-                    for i, book in ipairs(changed_books) do
-                        if plugin.destroyed then return end
-                        if info_fn then
-                            if not info_fn(string.format(_("Syncing %d/%d..."), i, #changed_books)) then
-                                break
-                            end
-                        end
-                        local ok, result = pcall(PluginSync.do_cloud_upload, plugin, { file = book.path })
-                        if result == "deferred" then return end
-                    end
-                end
-                local Trapper = require("ui/trapper")
-                Trapper:wrap(function()
-                    Trapper:setPausedText(_("Sync paused."), _("Abort"), _("Continue"))
-                    _sync_fallback(changed, function(msg) return Trapper:info(msg) end)
-                end)
+            if total > 0 then
+                sync_changed(changed)
             end
 
             Settings.set_last_sync_all_ts(os.time())
-            return
-        end
-
-        -- Plugin path: Cloud Storage+ available
-        if not cs.providers and cs.getProviders then cs:getProviders() end
-        local provider = cs.providers and cs.providers[server.type]
-        if not provider then return end
-        provider.base = server
-
-        -- Refresh Dropbox access token (no-op for WebDAV/FTP)
-        pcall(function() provider:genAccessToken() end)
-
-        -- 2a. Generate and upload OUR manifest
-        local my_manifest = listM.generateManifest(plugin)
-        local pl_files_hash = nil
-        local pl_cache_path = nil
-        local pl_skip_upload = false
-        local pl_cached_peer_hash = nil
-        if my_manifest then
-            local keys = {}
-            for k in pairs(my_manifest.files) do table.insert(keys, k) end
-            table.sort(keys)
-            local h = sha2.md5; local ctx = h()
-            for _, k in ipairs(keys) do ctx(k); ctx(my_manifest.files[k]) end
-            pl_files_hash = ctx()
-            pl_cache_path = Util.state_dir() .. "cloud_staging/.manifest_cache"
-            local cached_our_hash = nil
-            do local fh = io.open(pl_cache_path, "rb")
-                if fh then
-                    local line = fh:read("*l")
-                    fh:close()
-                    if line then
-                        local pipe = line:find("|", 1, true)
-                        if pipe then
-                            cached_our_hash = line:sub(1, pipe - 1)
-                            pl_cached_peer_hash = line:sub(pipe + 1)
-                        else
-                            cached_our_hash = line
-                        end
-                    end
-                end
-            end
-            pl_skip_upload = (cached_our_hash == pl_files_hash)
-            if not pl_skip_upload then
-                listM.uploadManifest(plugin, provider, server, my_manifest)
-            end
-        end
-
-        -- 2b. List cloud directory for all manifest files
-        local ok_list, entries = pcall(provider.listFolder, server.url, true)
-        if not ok_list or not entries then
-            return
-        end
-
-        -- 2c/2d. Collect all peer manifests from the listing
-        local manifests_to_check = {}
-        for _, e in ipairs(entries) do
-            local device_id = e.text:match("^syncery%-manifest%-(.+)%.txt$")
-            if device_id and device_id ~= my_device then
-                manifests_to_check[device_id] = true
-            end
-        end
-        -- 2e. Download each remote manifest, compare hashes, build delta list
-        local changed = {}
-        for device_id, _ in pairs(manifests_to_check) do
-            local remote = listM.downloadManifest(plugin, provider, server, device_id)
-            if remote and remote.files and my_manifest and my_manifest.files then
-                local peer_keys = {}
-                for k in pairs(remote.files) do table.insert(peer_keys, k) end
-                table.sort(peer_keys)
-                local peer_h = sha2.md5; local peer_ctx = peer_h()
-                for _, k in ipairs(peer_keys) do peer_ctx(k); peer_ctx(remote.files[k]) end
-                local peer_hash = peer_ctx()
-                do local fh = io.open(pl_cache_path, "wb")
-                    if fh then fh:write(pl_files_hash .. "|" .. peer_hash); fh:close() end
-                end
-                if not (pl_skip_upload and pl_cached_peer_hash == peer_hash) then
-                    for book_id, remote_hash in pairs(remote.files) do
-                        local my_hash = my_manifest.files[book_id]
-                        if my_hash and my_hash ~= remote_hash then
-                            local path = listM.resolveBookPath(plugin, book_id)
-                            if path then
-                                table.insert(changed, {id = book_id, path = path})
-                            end
-                        end
-                    end
-                end
-            end
-        end
-        -- 2e. Sync changed books
-        local total = #changed
-
-        local function sync_changed(changed_books, info_fn)
-            for i, book in ipairs(changed_books) do
-                if plugin.destroyed then return end
-                if info_fn then
-                    if not info_fn(string.format(_("Syncing %d/%d..."), i, total)) then
-                        break
-                    end
-                end
-                local ok, result = pcall(PluginSync.do_cloud_upload, plugin, { file = book.path })
-                if result == "deferred" then return end
-            end
-        end
-
-        if total > 0 then
-            local Trapper = require("ui/trapper")
-            Trapper:wrap(function()
-                Trapper:setPausedText(_("Sync paused."), _("Abort"), _("Continue"))
-                sync_changed(changed, function(msg) return Trapper:info(msg) end)
-            end)
-        end
-
-        Settings.set_last_sync_all_ts(os.time())
+        end)
     end)
 
     plugin._sync_all_in_progress = false
