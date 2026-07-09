@@ -34,13 +34,13 @@ do
         status_badge = "no sync",
     }
     h.assert_equal(S.get_status_header(plugin), "no sync",
-        "all transports off → defers to _statusBadge")
+        "all transports off — defers to _statusBadge")
     h.assert_false(S.header_needs_action(plugin),
-        "no transports → no actionable header")
+        "no transports — no actionable header")
 end
 
 
--- Syncthing toggle on but transport reports "not configured" → ⚠.
+-- Syncthing toggle on but transport reports "not configured" — ⚠.
 do
     local plugin = menu_support.make_fake_plugin{
         use_syncthing = true,
@@ -60,7 +60,7 @@ do
 end
 
 
--- Toggle off + transport reports "disabled (toggle off)" → defers
+-- Toggle off + transport reports "disabled (toggle off)" — defers
 -- to badge.  Even though the transport says it's unavailable, the
 -- user toggling it OFF is not an actionable problem.
 do
@@ -78,7 +78,7 @@ do
         status_badge = "cloud: ok",
     }
     h.assert_false(S.header_needs_action(plugin),
-        "toggle off + other transport ready → no actionable problem")
+        "toggle off + other transport ready — no actionable problem")
 end
 
 
@@ -160,7 +160,7 @@ do
     h.assert_true(label:find("tap to resolve") ~= nil,
         "smart_header label says 'tap to resolve' when actionable")
 
-    -- Actionable → the row is tappable, and tapping opens the failing
+    -- Actionable — the row is tappable, and tapping opens the failing
     -- transport's setup (resolve), NOT the read-only status detail.
     h.assert_equal(row.enabled_func(), true,
         "smart_header: enabled (tappable) when actionable")
@@ -185,7 +185,7 @@ do
     local label = row.text_func()
     h.assert_true(label:find("tap to resolve") == nil,
         "smart_header: no 'tap to resolve' when not actionable")
-    -- Informational → the row is NOT tappable; the dedicated
+    -- Informational — the row is NOT tappable; the dedicated
     -- "Show device status" row is the way to open the status detail.
     h.assert_equal(row.enabled_func(), false,
         "smart_header: not tappable when merely informational")
@@ -206,7 +206,7 @@ do
 end
 
 
--- Book open + no syncery_disabled setting → checked.
+-- Book open + no syncery_disabled setting — checked.
 do
     local plugin = menu_support.make_fake_plugin{
         ui = menu_support.make_fake_ui{ settings = {} },
@@ -214,7 +214,7 @@ do
     local row = S.sync_this_book_toggle(plugin)
     h.assert_equal(row.enabled_func(), true, "doc open: enabled")
     h.assert_equal(row.checked_func(), true,
-        "doc open, no syncery_disabled flag → checked by default")
+        "doc open, no syncery_disabled flag — checked by default")
 end
 
 
@@ -256,12 +256,12 @@ end
 do
     local plugin = menu_support.make_fake_plugin{ ui = nil }
     local row = S.sync_now(plugin)
-    h.assert_equal(row.enabled_func(), false,
-        "no doc: sync-now disabled")
+    h.assert_equal(row.enabled_func(), true,
+        "no doc: sync-now enabled (library-wide)")
 end
 
 
--- Book open + no retries in flight → label is "Sync now".
+-- Book open + no retries in flight — label is "Sync now".
 do
     local plugin = menu_support.make_fake_plugin{
         ui = menu_support.make_fake_ui{ settings = {} },
@@ -355,3 +355,4 @@ do
         and body:find("pickCloudDestination", 1, true) ~= nil,
         "wiring: a cloud problem opens pickCloudDestination")
 end
+

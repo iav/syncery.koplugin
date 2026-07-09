@@ -55,6 +55,7 @@
 --      Either way, every armed timer is cancelled.
 -- =============================================================================
 
+local PluginSync = require("syncery_transports.plugin_sync")
 
 local Teardown = {}
 
@@ -74,7 +75,7 @@ local Teardown = {}
 --   plugin:getCurrentState()          — returns nil when no doc open
 --   plugin:_writeSave(state, t, silent)
 --   plugin:_syncBookViaOrchestrator(state)
---   plugin:_doCloudUpload(state)
+--   PluginSync.pushOpenedBooks(plugin)
 --   plugin:_doTriggerScan(state)
 --   plugin:_isFileTypeSynced(state.file)
 --
@@ -177,6 +178,19 @@ function Teardown.flush(plugin, ui_manager, util_now, logger, opts)
             plugin:_writeSave(state, util_now(), true,
                 opts.destroying and "close" or "suspend")
 
+            -- Track this book in .opened for sync_all push
+            if state.file then
+                if logger.info then
+                    logger.info("Syncery: writing to .opened:", state.file)
+                end
+                local opened_path = plugin.state_dir .. ".opened"
+                local fo = io.open(opened_path, "a")
+                if fo then
+                    fo:write(state.file .. "\n")
+                    fo:close()
+                end
+            end
+
             -- Step 2: annotation back-sync via the orchestrator (pull +
             -- merge + push, bookmarks included).  Runs unconditionally —
             -- the orchestrator owns its own completion accounting, and its
@@ -234,7 +248,7 @@ function Teardown.flush(plugin, ui_manager, util_now, logger, opts)
                 if plugin._cloud_reachability then
                     pcall(function() plugin._cloud_reachability:warm_blocking() end)
                 end
-                plugin:_doCloudUpload(state)
+                PluginSync.pushOpenedBooks(plugin)
             end
 
             -- Step 4: tell Syncthing to scan our file.  The orchestrator's

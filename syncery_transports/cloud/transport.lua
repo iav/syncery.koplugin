@@ -312,10 +312,40 @@ function Transport.new(opts)
                 canonical_path = ProgressPaths.shared_progress_path(book_file),
                 on_reconciled  = on_reconciled,
             })
+        elseif kind == "manifest" then
+            return function(local_file, cached_file, income_file)
+                local cjson = require("json")
+                local function read_json(path)
+                    local f = io.open(path, "rb")
+                    if not f then return nil end
+                    local raw = f:read("*a"); f:close()
+                    local ok, data = pcall(cjson.decode, raw)
+                    if not ok or not data then return nil end
+                    return data
+                end
+                local function write_json(path, data)
+                    local f = io.open(path, "wb")
+                    if not f then return false end
+                    local ok, encoded = pcall(cjson.encode, data)
+                    if not ok then f:close(); return false end
+                    f:write(encoded); f:close()
+                    return true
+                end
+                local local_m = read_json(local_file)
+                local remote_m = read_json(income_file)
+                local merged = {}
+                if local_m then
+                    for k, v in pairs(local_m) do merged[k] = v end
+                end
+                if remote_m then
+                    for k, v in pairs(remote_m) do merged[k] = v end
+                end
+                write_json(local_file, merged)
+                return true
+            end
         end
         return nil
     end
-
     --- cloud_sync — the ONE bidirectional sync operation.
     ---
     --- A cloud provider's sync() is bidirectional in a single call
@@ -481,6 +511,5 @@ end
 -- transport (the staging-dir creation is load-bearing — see the function's
 -- note).  Mirrors cloudstorage_provider.resolve_ui_instance.
 Transport._default_ensure_dir = default_ensure_dir
-
 
 return Transport

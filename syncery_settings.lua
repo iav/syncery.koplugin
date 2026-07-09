@@ -406,5 +406,16 @@ function Settings.set_db_sync_interval_min(n)
     return n
 end
 
+-- ----------------------------------------------------------------------------
+-- Sync-all timestamp — persisted in G_reader_settings so it survives restarts.
+-- ----------------------------------------------------------------------------
+
+function Settings.get_last_sync_all_ts()
+    return G_reader_settings:readSetting("syncery_last_sync_all_ts") or 0
+end
+
+function Settings.set_last_sync_all_ts(ts)
+    G_reader_settings:saveSetting("syncery_last_sync_all_ts", ts)
+end
 
 return Settings

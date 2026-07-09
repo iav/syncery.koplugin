@@ -892,6 +892,10 @@ do
         use_syncthing = false,   -- Step 4 nextTick short-circuits after the check
         adapt_highlight_style = true,
         device_id     = "this_dev",
+        -- Step 1's ".opened" tracking write (mirrors main.lua's _save) reads
+        -- plugin.state_dir; real Syncery:init() always sets it before any
+        -- teardown event can fire (main.lua:769).
+        state_dir     = h.test_root .. "/state/",
         ui = reader_ui,
         getCurrentState = function(_s) return { file = "/b.epub", page = 3 } end,
         _writeSave = function(_s, _state, _now, _silent) end,

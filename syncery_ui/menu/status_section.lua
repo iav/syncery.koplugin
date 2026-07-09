@@ -112,7 +112,7 @@ function S.smart_header(plugin)
                 pct = string.format(" (%.0f%%)", state.percent * 100)
             end
             if needs_action then
-                return header .. _(" — tap to resolve") .. pct
+                return header ..  _(" — tap to resolve") .. pct
             end
             return header .. pct
         end,
@@ -200,8 +200,7 @@ end
 --- Manual sync trigger.  Dynamic label: when any
 --- transport reports `orch_any_pending_retry`, the label changes to
 --- `"Syncing…"` to reflect that an attempt is in flight already.
---- Gated on having an open document — `syncNow` operates on the
---- current state.
+--- Library-wide: sync-all runs with or without an open document.
 function S.sync_now(plugin)
     local has_doc = function()
         return (plugin.ui and plugin.ui.doc_settings ~= nil) and true or false
@@ -217,6 +216,22 @@ function S.sync_now(plugin)
     return {
         text_func = function()
             if in_flight() then return _("Syncing…") end
+            local Settings = require("syncery_settings")
+            local last_ts = Settings.get_last_sync_all_ts()
+            if last_ts and last_ts > 0 then
+                local diff = os.time() - last_ts
+                local ago
+                if diff < 60 then
+                    ago = _("just now")
+                elseif diff < 3600 then
+                    ago = string.format(_("%d min ago"), math.floor(diff / 60))
+                elseif diff < 86400 then
+                    ago = string.format(_("%d hr ago"), math.floor(diff / 3600))
+                else
+                    ago = string.format(_("%d d ago"), math.floor(diff / 86400))
+                end
+                return _("Sync now") .. " (" .. ago .. ")"
+            end
             return _("Sync now")
         end,
         help_text = _(
@@ -226,12 +241,9 @@ function S.sync_now(plugin)
             .. "Syncery saves automatically as you read — use this when "
             .. "you want to push an update without waiting."),
         keep_menu_open = true,
-        enabled_func   = has_doc,
-        hold_callback  = H.gatedHold(has_doc,
-            _("No document is open — open a book first to sync it."),
-            _("Tap to save and push now.")),
+        enabled_func   = function() return true end,
+        hold_callback  = function() return _("Tap to save and push all opened books to the cloud.") end,
         callback       = H.safe("Sync now", function()
-            if not has_doc() then return end
             plugin:syncNow()
         end),
         -- Last row of the status cluster when a book is open (the smart header
@@ -257,8 +269,8 @@ function S.build(plugin)
     local rows = { S.smart_header(plugin) }
     if has_doc then
         table.insert(rows, S.sync_this_book_toggle(plugin))
-        table.insert(rows, S.sync_now(plugin))
     end
+    table.insert(rows, S.sync_now(plugin))
     return rows
 end
 

@@ -56,6 +56,7 @@ local Staging = {}
 Staging.KINDS = {
     progress    = true,
     annotations = true,
+    manifest    = true,
 }
 
 
@@ -80,7 +81,7 @@ function Staging.cloud_name_for(kind, book_id)
     -- returns the full 128-bit digest); we accept a slightly broader
     -- alphanumeric set to be lenient with legitimately weird future IDs.
     if book_id:match("[^%w%-_]") then return nil end
-    return "syncery-" .. kind .. "-" .. book_id .. ".json"
+    local ext = (kind == "manifest") and ".txt" or ".json"; return "syncery-" .. kind .. "-" .. book_id .. ext
 end
 
 
