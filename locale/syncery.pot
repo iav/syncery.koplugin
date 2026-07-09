@@ -38,6 +38,10 @@ msgid_plural "%d books are not on this device — nothing was moved or deleted f
 msgstr[0] ""
 msgstr[1] ""
 
+#: syncery_ui/menu/status_section.lua syncery_ui/status_section.lua
+msgid "%d d ago"
+msgstr ""
+
 #: main.lua
 msgid "%d file was skipped — its book could not be identified, so it was left untouched."
 msgid_plural "%d files were skipped — their book could not be identified, so they were left untouched."
@@ -79,6 +83,10 @@ msgstr ""
 
 #: syncery_ui/annotation_viewer/viewer_lifted.lua
 msgid "A to Z (by Date)"
+msgstr ""
+
+#: syncery_transports/plugin_sync.lua
+msgid "Abort"
 msgstr ""
 
 #: syncery_ui/annotation_viewer/viewer_lifted.lua
@@ -306,6 +314,10 @@ msgstr ""
 
 #: syncery_ui/annotation_viewer/viewer_lifted.lua
 msgid "Content Size: "
+msgstr ""
+
+#: syncery_transports/plugin_sync.lua
+msgid "Continue"
 msgstr ""
 
 #: syncery_ui/menu/maintenance_section.lua
@@ -1200,6 +1212,10 @@ msgstr ""
 msgid "Sync interval: %d min"
 msgstr ""
 
+#: syncery_transports/plugin_sync.lua
+msgid "Sync paused."
+msgstr ""
+
 #: syncery_ui/menu/maintenance_section.lua
 msgid "Sync pre-Syncery data…"
 msgstr ""
@@ -1327,6 +1343,10 @@ msgstr ""
 msgid "Close"
 msgstr ""
 
+#: syncery_transports/plugin_sync.lua
+msgid "Syncing %d/%d..."
+msgstr ""
+
 #: _meta.lua
 msgid "Syncs your full reading state — position, highlights, notes, bookmarks, and book metadata — across devices as plain JSON, carried by Syncthing or cloud storage (Dropbox/WebDAV/FTP)."
 msgstr ""
@@ -1352,6 +1372,10 @@ msgstr ""
 
 #: syncery_ui/menu/transport_section.lua
 msgid "Tap to enter the Syncthing API key."
+msgstr ""
+
+#: syncery_ui/menu/status_section.lua
+msgid "Tap to save and push all opened books to the cloud."
 msgstr ""
 
 #: syncery_ui/annotation_viewer/viewer_lifted.lua
@@ -1801,6 +1825,10 @@ msgstr ""
 
 #: syncery_ui/menu/per_book_section.lua
 msgid "an unknown device"
+msgstr ""
+
+#: syncery_ui/status_section.lua
+msgid "never synced"
 msgstr ""
 
 #: syncery_ui/menu/transport_section.lua syncery_ui/status_panel.lua
@@ -2632,7 +2660,7 @@ msgstr ""
 msgid "Syncing…"
 msgstr ""
 
-#: syncery_ui/menu/status_section.lua
+#: syncery_ui/menu/status_section.lua syncery_ui/status_section.lua
 msgid "Sync now"
 msgstr ""
 
@@ -2641,14 +2669,6 @@ msgid ""
 "Save progress and annotations right now, then trigger a Syncthing folder scan so other devices receive the update immediately.\n"
 "\n"
 "Syncery saves automatically as you read — use this when you want to push an update without waiting."
-msgstr ""
-
-#: syncery_ui/menu/status_section.lua
-msgid "No document is open — open a book first to sync it."
-msgstr ""
-
-#: syncery_ui/menu/status_section.lua
-msgid "Tap to save and push now."
 msgstr ""
 
 #: syncery_ui/menu/transport_section.lua syncery_ui/wizard.lua
@@ -2925,18 +2945,21 @@ msgstr ""
 msgid "never"
 msgstr ""
 
-#: syncery_ui/status_panel.lua syncery_ui/status_ui/init.lua
+#: syncery_ui/menu/status_section.lua syncery_ui/status_panel.lua
+#: syncery_ui/status_section.lua syncery_ui/status_ui/init.lua
 #: syncery_ui/trash/init.lua
 msgid "just now"
 msgstr ""
 
-#: syncery_ui/status_panel.lua syncery_ui/status_ui/init.lua
+#: syncery_ui/menu/status_section.lua syncery_ui/status_panel.lua
+#: syncery_ui/status_section.lua syncery_ui/status_ui/init.lua
 #: syncery_ui/trash/init.lua
 #, lua-format
 msgid "%d min ago"
 msgstr ""
 
-#: syncery_ui/status_panel.lua syncery_ui/status_ui/init.lua
+#: syncery_ui/menu/status_section.lua syncery_ui/status_panel.lua
+#: syncery_ui/status_section.lua syncery_ui/status_ui/init.lua
 #: syncery_ui/trash/init.lua
 #, lua-format
 msgid "%d hr ago"

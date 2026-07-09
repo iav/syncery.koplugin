@@ -261,5 +261,30 @@ function S.header_needs_action(plugin)
     return type(header) == "string" and header:sub(1, #"⚠") == "⚠"
 end
 
+-- ============================================================================
+-- 5. sync_now_label — the "Sync Now" button text with relative timing
+-- ============================================================================
+
+--- Build the label for the Sync Now button.
+--- Composes a base string with one of several timestamp-only suffixes,
+--- which is better for translators (each suffix is independently translatable).
+function S.sync_now_label()
+    local last = Settings.get_last_sync_all_ts()
+    if last and last > 0 then
+        local ago = os.difftime(os.time(), last)
+        if ago < 60 then
+            return _("Sync now") .. " (" .. _("just now") .. ")"
+        elseif ago < 3600 then
+            return _("Sync now") .. string.format(" (%s)", string.format(_("%d min ago"), math.floor(ago / 60)))
+        elseif ago < 86400 then
+            return _("Sync now") .. string.format(" (%s)", string.format(_("%d hr ago"), math.floor(ago / 3600)))
+        else
+            return _("Sync now") .. string.format(" (%s)", string.format(_("%d d ago"), math.floor(ago / 86400)))
+        end
+    else
+        return _("Sync now") .. " (" .. _("never synced") .. ")"
+    end
+end
+
 
 return S

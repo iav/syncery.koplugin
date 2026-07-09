@@ -591,6 +591,7 @@ local PREFERENCE_KEYS = {
     "syncery_syncthing_port", "syncery_syncthing_scheme",
     -- Cloud
     "syncery_use_cloud", "syncery_cloud_server", "syncery_cloud_upload_delay",
+    "syncery_last_sync_all_ts",
     -- DB sync (Reading Statistics + Vocabulary Builder)
     "syncery_db_sync_enabled", "syncery_db_sync_stats", "syncery_db_sync_vocab",
     "syncery_db_sync_unify", "syncery_db_sync_interval_min",
@@ -765,6 +766,7 @@ function Syncery:init()
     self._pending_anns = nil
     self.device_id    = Util.get_device_id()
     self.device_label = Util.get_device_label()
+    self.state_dir = Util.state_dir()
 
     -- Wire the notification coordinator to the real UIManager and
     -- the shared bottom toast. Call sites use Notify.notifyL1/L2/Invite; the
@@ -2160,6 +2162,18 @@ function Syncery:_save(opts)
         end
 
         if not saved then return end
+		
+        -- Track this book in .opened for sync_all push
+        if state.file then
+            logger.info("Syncery: writing to .opened:", state.file)
+            local opened_path = self.state_dir .. ".opened"
+            local f = io.open(opened_path, "a")
+            if not f then logger.warn("Syncery: cannot open .opened for append:", opened_path) end
+            if f then
+                f:write(state.file .. "\n")
+                f:close()
+            end
+        end
 
         -- Auxiliary transport runs regardless of Syncthing: it's a
         -- complement to it, not a replacement.  The helper no-ops cheaply
@@ -3048,7 +3062,7 @@ function Syncery:syncNow()
     -- Persist current state regardless of which transport handles the
     -- network side: the JSON files have to be on disk before any scan
     -- (ours or KOSyncthing+'s) can see them.
-    self:doSave(false, true)
+    self:doSave(true, true)
 
     -- For the actual scan trigger: when kosyncthing_plus is installed,
     -- delegate to its `quickSync`.  That's strictly better than our
@@ -3069,8 +3083,7 @@ function Syncery:syncNow()
         self:checkRemote()
     end)
     if self.use_cloud then
-        local state = self:getCurrentState()
-        if state then self:_doCloudUpload(state) end
+        PluginSync.sync_all(self)
     end
 end
 

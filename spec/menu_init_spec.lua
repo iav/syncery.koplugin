@@ -43,7 +43,7 @@ end
 
 do
     local plugin = menu_support.make_fake_plugin{
-        ui = menu_support.make_fake_ui{ settings = {} },   -- book open → full menu
+        ui = menu_support.make_fake_ui{ settings = {} },   -- book open — full menu
     }
     local items = Menu.buildTopMenu(plugin)
     h.assert_equal(#items, 11,
@@ -103,10 +103,10 @@ end
 -- are absent; only the global rows remain.  buildTopMenu is rebuilt per open,
 -- so they return once a book is open (the full-menu test above covers that).
 do
-    local plugin = menu_support.make_fake_plugin{}   -- no ui → no doc_settings
+    local plugin = menu_support.make_fake_plugin{}   -- no ui — no doc_settings
     local items = Menu.buildTopMenu(plugin)
-    h.assert_equal(#items, 8,
-        "buildTopMenu (no book): 8 global rows (header + What's synced + "
+    h.assert_equal(#items, 9,
+        "buildTopMenu (no book): 9 global rows (header + Sync now + What's synced + "
         .. "Transports + Progress Browser + Annotation Browser + Tools + Advanced "
         .. "+ Check for plugin updates)")
     local labels = {}
@@ -201,7 +201,7 @@ end
 do
     local plugin = menu_support.make_fake_plugin{
         sync_progress = true, sync_annotations = false, sync_metadata = false,
-        ui = menu_support.make_fake_ui{ settings = {} },   -- book open → row 4 is What's synced
+        ui = menu_support.make_fake_ui{ settings = {} },   -- book open — row 4 is What's synced
     }
     local what_label = Menu.buildTopMenu(plugin)[4].text_func()
     h.assert_true(what_label:find("progress") ~= nil,
@@ -214,7 +214,7 @@ end
 do
     local plugin = menu_support.make_fake_plugin{
         sync_progress = true, sync_annotations = true, sync_metadata = true,
-        ui = menu_support.make_fake_ui{ settings = {} },   -- book open → row 4 is What's synced
+        ui = menu_support.make_fake_ui{ settings = {} },   -- book open — row 4 is What's synced
     }
     local what_label = Menu.buildTopMenu(plugin)[4].text_func()
     h.assert_true(what_label:find("all") ~= nil,
@@ -226,7 +226,7 @@ end
 do
     local plugin = menu_support.make_fake_plugin{
         sync_progress = false, sync_annotations = false, sync_metadata = false,
-        ui = menu_support.make_fake_ui{ settings = {} },   -- book open → row 4 is What's synced
+        ui = menu_support.make_fake_ui{ settings = {} },   -- book open — row 4 is What's synced
     }
     local what_label = Menu.buildTopMenu(plugin)[4].text_func()
     h.assert_true(what_label:find("nothing yet") ~= nil,

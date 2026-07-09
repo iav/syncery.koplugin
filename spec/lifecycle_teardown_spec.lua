@@ -44,6 +44,11 @@ local function make_fake_plugin(opts)
         _cloud_configured        = opts.cloud_configured ~= false,
         _syncthing_configured    = opts.syncthing_configured ~= false,
 
+        -- Step 1's ".opened" tracking write (mirrors main.lua's _save) reads
+        -- plugin.state_dir; real Syncery:init() always sets it before any
+        -- teardown event can fire (main.lua:769).
+        state_dir                = opts.state_dir or (h.test_root .. "/state/"),
+
         -- The state returned by getCurrentState (set to nil to test
         -- the "no document open" path).
         _state                   = opts.state ~= nil and opts.state
@@ -64,7 +69,9 @@ local function make_fake_plugin(opts)
     function plugin:_syncBookViaOrchestrator(state)
         record("_syncBookViaOrchestrator", state)
     end
-    function plugin:_doCloudUpload(state)   record("_doCloudUpload",   state) end
+    -- V4: pushOpenedBooks replaces _doCloudUpload on teardown
+    local PluginSync = require("syncery_transports.plugin_sync")
+    PluginSync.pushOpenedBooks = function(plugin) record("pushOpenedBooks", plugin) end
     function plugin:_doTriggerScan(state, scan_opts)
         record("_doTriggerScan", state, scan_opts)
     end
@@ -111,7 +118,7 @@ local function make_fake_plugin(opts)
     }
 
     -- Reachability verdict that the close-time push (Step 3) warms
-    -- synchronously before _doCloudUpload, so the gate answers inline.
+    -- synchronously before pushOpenedBooks, so the gate answers inline.
     plugin._cloud_reachability = {
         warm_blocking = function() record("warm_blocking") end,
         -- E: the online close-push path resets the verdict (as the delayed
@@ -184,10 +191,10 @@ do
 
     h.assert_true(plugin:called("_writeSave")             ~= nil, "Step 1: _writeSave")
     h.assert_true(plugin:called("_syncBookViaOrchestrator") ~= nil, "Step 2: orchestrator back-sync")
-    h.assert_true(plugin:called("_doCloudUpload")         ~= nil, "Step 3: cloud upload")
+    h.assert_true(plugin:called("pushOpenedBooks")         ~= nil, "Step 3: pushOpenedBooks")
     h.assert_true(plugin:called("warm_blocking")          ~= nil, "Step 3: reachability warmed (close-time)")
-    h.assert_true(plugin:called_index("warm_blocking") < plugin:called_index("_doCloudUpload"),
-        "Step 3: warm_blocking runs BEFORE _doCloudUpload (so the gate answers inline)")
+    h.assert_true(plugin:called_index("warm_blocking") < plugin:called_index("pushOpenedBooks"),
+        "Step 3: warm_blocking runs BEFORE pushOpenedBooks (so the gate answers inline)")
     h.assert_equal(ui.next_ticks_fired(),              1,         "Step 4: nextTick scheduled")
     h.assert_true(plugin:called("_doTriggerScan")         ~= nil, "Step 4: scan triggered inside nextTick")
     h.assert_equal(plugin.timers_cancel_all_count,     1,         "Step 5: cancel_all called")
@@ -264,8 +271,8 @@ do
 
     Teardown.flush(plugin, ui, fixed_now, nil, {})
 
-    h.assert_nil(plugin:called("_doCloudUpload"),
-        "_doCloudUpload NOT called when use_cloud=false")
+    h.assert_nil(plugin:called("pushOpenedBooks"),
+        "pushOpenedBooks NOT called when use_cloud=false")
 end
 
 
@@ -326,7 +333,7 @@ do
 
     h.assert_nil(plugin:called("_writeSave"),               "no Step 1")
     h.assert_nil(plugin:called("_syncBookViaOrchestrator"), "no Step 2")
-    h.assert_nil(plugin:called("_doCloudUpload"),   "no Step 3")
+    h.assert_nil(plugin:called("pushOpenedBooks"),   "no Step 3")
     h.assert_equal(ui.next_ticks_fired(), 0,        "no Step 4")
     h.assert_equal(plugin.timers_cancel_all_count, 1, "Step 5 still happens")
 end
@@ -743,7 +750,7 @@ do
         "wake on: routed through goOnlineToRun")
     h.assert_equal(plugin:count("_goOnlineToRun"), 1, "seam consulted once")
     h.assert_equal(plugin:count("_writeSave"),     1, "flush ran exactly once (no double)")
-    h.assert_true(plugin:called("_doCloudUpload") ~= nil, "cloud push happened")
+    h.assert_true(plugin:called("pushOpenedBooks") ~= nil, "pushOpenedBooks called")
 end
 
 
@@ -916,7 +923,7 @@ do
     h.assert_true(plugin:called("on_network_connected") ~= nil,
         "reachability verdict reset on the online close-push path")
     h.assert_true(plugin:called_index("on_network_connected")
-                  < plugin:called_index("_doCloudUpload"),
+                  < plugin:called_index("pushOpenedBooks"),
         "verdict reset happens BEFORE the cloud upload")
 end
 
@@ -948,10 +955,9 @@ do
         "J: already online -> goOnlineToRun skipped (no WAN/DNS-probe stall)")
     h.assert_nil(plugin:called("on_network_connected"),
         "F: already online -> stale-verdict reset SKIPPED (fresh failure preserved)")
-    h.assert_true(plugin:called("_doCloudUpload") ~= nil, "flush still ran (direct)")
+    h.assert_true(plugin:called("pushOpenedBooks") ~= nil, "flush still ran (direct)")
     h.assert_equal(plugin:count("_writeSave"), 1, "flush ran exactly once")
 end
-
 
 -- H: a raising readiness gate during close-push must NOT strand Step 5 — the
 -- preflight runs outside the steps pcall, so the whole attempt is itself pcall'd.
@@ -985,7 +991,7 @@ do
     local transport = { shutdown = function() table.insert(order, "shutdown") end }
     local plugin = make_fake_plugin{ wake_wifi_for_sync = true, wake_wifi_on_suspend = true,
                                      transport = transport }
-    plugin._doCloudUpload = function() table.insert(order, "push") end
+    local PluginSync = require("syncery_transports.plugin_sync"); PluginSync.pushOpenedBooks = function(plugin) table.insert(order, "push") end
     local ui = make_fake_uimgr()
     -- While the suspend wake blocks raising Wi-Fi, a destroying event arrives and
     -- re-enters teardown.  (No infinite recursion: wake_push won't nest.)
@@ -1019,7 +1025,7 @@ do
     local order = {}
     local transport = { shutdown = function() table.insert(order, "shutdown") end }
     local plugin = make_fake_plugin{ wake_wifi_on_suspend = true, transport = transport }
-    plugin._doCloudUpload = function() table.insert(order, "push") end
+    local PluginSync = require("syncery_transports.plugin_sync"); PluginSync.pushOpenedBooks = function(plugin) table.insert(order, "push") end
     local ui = make_fake_uimgr()
     plugin._goOnlineToRun = function(self, cb)
         Teardown.flush(self, ui, fixed_now, nil, { destroying = true })  -- re-entrant destroy
