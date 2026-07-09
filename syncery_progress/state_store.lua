@@ -212,6 +212,16 @@ function StateStore._build_empty_state()
 end
 
 
+--- Canonical EMPTY progress envelope as a JSON string.  Used to bootstrap a
+--- fresh-device cloud PULL: staging this "no-opinion" side lets the
+--- bidirectional sync download a peer's position for a book this device has
+--- never opened (see syncery_transports/plugin_sync._build_cloud_entries).
+--- Mirrors the annotation store's empty_envelope_json.
+function StateStore.empty_envelope_json()
+    return JsonStore.encode(StateStore._build_empty_state())
+end
+
+
 --- Normalize a freshly-decoded JSON table into the new shape.
 ---
 --- Public so callers that load progress JSON via their own path (for

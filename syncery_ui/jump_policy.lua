@@ -63,6 +63,30 @@ JumpPolicy.PERCENT_EPSILON    = 0.001
 -- their own — only if the xpath (rolling-doc DOM anchor) also changed.
 JumpPolicy.SYNC_TRIGGER_DELTA = 0.005
 
+-- How long after open/resume the session recency baseline stays alive
+-- (seconds).  Within this grace window the reader may flip pages to orient
+-- without forfeiting an incoming jump; after it the device's own recency is
+-- honest again and the baseline is dropped.  Sized for the worst realistic
+-- delivery chain: scheduled pull + a cold-probe backoff step or two + the
+-- transfer -- and, with wake-on-open, the Wi-Fi raise itself (10-30 s).
+JumpPolicy.SESSION_JUMP_WINDOW_S = 60
+
+
+--- Is position (b_percent, b_xpath) a SUBSTANTIVE move away from
+--- (a_percent, a_xpath)?  The single definition of "actually moved": tiny
+--- percent wobble is no move; a small-but-real percent change counts only
+--- when the xpath also changed.  Consumed by should_prompt; kept as a public
+--- helper so future callers share one threshold instead of re-deriving it.
+function JumpPolicy.moved_substantially(a_percent, a_xpath, b_percent, b_xpath)
+    local delta = math.abs((tonumber(b_percent) or 0) - (tonumber(a_percent) or 0))
+    if delta <= JumpPolicy.PERCENT_EPSILON then return false end
+    if delta <= JumpPolicy.SYNC_TRIGGER_DELTA
+       and not (b_xpath and b_xpath ~= a_xpath) then
+        return false
+    end
+    return true
+end
+
 
 --- Decide whether to raise a jump prompt for the best remote entry.
 ---
@@ -97,14 +121,7 @@ function JumpPolicy.should_prompt(best_entry, best_device_id, acked_map, l_perce
     if r_rev <= acked_rev then return false end
 
     -- 2. Substantive delta — is it actually worth jumping?
-    local delta = math.abs(r_percent - l_percent)
-    if delta <= JumpPolicy.PERCENT_EPSILON then return false end
-    if delta <= JumpPolicy.SYNC_TRIGGER_DELTA
-       and not (r_xpath and r_xpath ~= l_xpath) then
-        return false
-    end
-
-    return true
+    return JumpPolicy.moved_substantially(l_percent, l_xpath, r_percent, r_xpath)
 end
 
 
@@ -148,14 +165,28 @@ end
 ---
 --- @param entries table|nil { [device_id] = entry }, freshness-filtered, INCLUDING this device's own entry.
 --- @param our_device_id string|nil this device's id — the recency baseline AND the "don't offer ourselves" guard.
+--- @param our_recency_ts number|nil Rank OUR OWN entry by THIS timestamp
+---        instead of its live one.  During a session our own autosave keeps
+---        re-stamping our entry "most recent", which would forever outrank a
+---        peer state that arrived (open-moment cloud pull) seconds after we
+---        opened — so the caller passes the SESSION-START timestamp: "forward
+---        means newer than what this reader has actually seen", not newer
+---        than our latest autosave.  nil = legacy ranking (live timestamp).
 --- @return table|nil The most-recently-read OTHER entry when it is newer than us (forward), else nil.
 --- @return string|nil Its device_id (the map key).
-function JumpPolicy.pick_jump_target(entries, our_device_id)
+function JumpPolicy.pick_jump_target(entries, our_device_id, our_recency_ts)
     local best_entry, best_device_id = nil, nil
     for device_id, entry in pairs(entries or {}) do
         if type(entry) == "table" then
-            if JumpPolicy._is_more_recent(entry, device_id, best_entry, best_device_id) then
-                best_entry, best_device_id = entry, device_id
+            local rank = entry
+            if our_recency_ts ~= nil and device_id == our_device_id then
+                -- Proxy with the baseline timestamp; percent kept for the
+                -- tie-break.  Never returned to the caller: if we win the
+                -- ranking the function returns nil below.
+                rank = { timestamp = our_recency_ts, percent = entry.percent }
+            end
+            if JumpPolicy._is_more_recent(rank, device_id, best_entry, best_device_id) then
+                best_entry, best_device_id = rank, device_id
             end
         end
     end

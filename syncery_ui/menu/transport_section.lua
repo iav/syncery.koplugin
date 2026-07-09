@@ -552,6 +552,31 @@ function T.menuCloudConfig(plugin)
                 function() T.testCloudConnection(plugin) end),
             separator      = true,
         },
+        -- Wake-on-open toggle: always present, greyed until the cloud transport
+        -- is actually READY (_isCloudPullReady: cloud on + configured + state
+        -- "ready").  is_cloud_configured() alone is too weak -- a syncservice
+        -- fallback reports the server with no usable backend (no_backend /
+        -- unsupported, e.g. FTP-only), so the pull could never fire and the
+        -- toggle would be a dead switch (codex).  enabled_func re-evaluates on
+        -- repaint -- no rebuild needed.
+        (function()
+            local item = H.makeBoolToggle(plugin,
+                "wake_wifi_on_open", "syncery_wake_wifi_on_open",
+                _("Wake Wi-Fi for cloud pull on open"),
+                _("When you open a book (or wake the device with one open) while offline, turn Wi-Fi "
+                .. "on and pull the latest position and annotations from the cloud — so a device that "
+                .. "read further while this one slept can offer its position right away, instead of "
+                .. "waiting for the next manual connection.\n\n"
+                .. "Uses KOReader's standard connection flow: its \"Connecting to Wi-Fi…\" notice shows "
+                .. "while the radio comes up, and the pull lands a few seconds after it clears.  Acts "
+                .. "only when \"when network is needed\" is set to turn Wi-Fi on automatically — it "
+                .. "never asks.  After a failed connection attempt it stays quiet for a few minutes.  "
+                .. "Off by default."))
+            item.enabled_func = function()
+                return plugin:_isCloudPullReady()
+            end
+            return item
+        end)(),
     }
 
     -- codex 552: only surface the wake toggles once a cloud DESTINATION exists.

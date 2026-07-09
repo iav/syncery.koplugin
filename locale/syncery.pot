@@ -133,10 +133,6 @@ msgstr ""
 msgid "Annotations (%d)"
 msgstr ""
 
-#: main.lua
-msgid "Annotations are already synced — this only moves your reading position."
-msgstr ""
-
 #: syncery_ui/menu/annotations_section.lua
 msgid "Another device's new position: %s"
 msgstr ""
@@ -539,6 +535,10 @@ msgstr ""
 msgid "H: "
 msgstr ""
 
+#: syncery_ui/jump_toast.lua
+msgid "Here"
+msgstr ""
+
 #: syncery_ui/annotation_viewer/viewer_lifted.lua
 msgid "Hide Duplicate Book Header: "
 msgstr ""
@@ -614,6 +614,10 @@ msgstr ""
 
 #: syncery_ui/menu/annotations_section.lua
 msgid "Jump to another device now…"
+msgstr ""
+
+#: main.lua
+msgid "Jump to another device's position?"
 msgstr ""
 
 #: syncery_ui/progress_browser/init.lua
@@ -953,6 +957,10 @@ msgstr ""
 
 #: syncery_ui/menu/init.lua syncery_ui/progress_browser/init.lua
 msgid "Progress Browser"
+msgstr ""
+
+#: syncery_ui/menu/init.lua
+msgid "Prompt to reload for synced content"
 msgstr ""
 
 #: syncery_ui/menu/annotations_section.lua
@@ -1688,6 +1696,10 @@ msgid "Vocabulary"
 msgstr ""
 
 #: syncery_ui/menu/transport_section.lua
+msgid "Wake Wi-Fi for cloud pull on open"
+msgstr ""
+
+#: syncery_ui/menu/transport_section.lua
 msgid "Wake Wi-Fi for cloud push on close"
 msgstr ""
 
@@ -1706,6 +1718,10 @@ msgid ""
 "Either way you can still jump on demand from \"Jump to another device now…\" below.  Undo the last jump within 60 seconds from Menu → Syncery → This book → Undo last jump."
 msgstr ""
 
+#: syncery_ui/menu/init.lua
+msgid "When another device's annotations or font & layout arrive while you're reading, offer a [Reload] to apply them now. Off: they apply silently the next time you open the book."
+msgstr ""
+
 #: syncery_ui/menu/transport_section.lua
 msgid ""
 "When the device goes to sleep while offline, bring Wi-Fi up and push your latest position and annotations to the cloud before it actually sleeps — so they reach the server instead of waiting for the next time you open this book.\n"
@@ -1720,6 +1736,13 @@ msgid ""
 "When you close a book (or quit KOReader) while offline, bring Wi-Fi up and wait for it before pushing your latest position and annotations to the cloud — so they actually reach the server instead of being silently held back until some later session.\n"
 "\n"
 "Respects your device's \"when network is needed\" setting: it only turns Wi-Fi on if that is set to turn it on automatically (not prompt or ignore).  Off by default.  Closing can pause for up to ~30 seconds worst-case while the connection comes up and the push completes."
+msgstr ""
+
+#: syncery_ui/menu/transport_section.lua
+msgid ""
+"When you open a book (or wake the device with one open) while offline, turn Wi-Fi on and pull the latest position and annotations from the cloud — so a device that read further while this one slept can offer its position right away, instead of waiting for the next manual connection.\n"
+"\n"
+"Uses KOReader's standard connection flow: its \"Connecting to Wi-Fi…\" notice shows while the radio comes up, and the pull lands a few seconds after it clears.  Acts only when \"when network is needed\" is set to turn Wi-Fi on automatically — it never asks.  After a failed connection attempt it stays quiet for a few minutes.  Off by default."
 msgstr ""
 
 #: syncery_ui/annotation_viewer/viewer_lifted.lua
@@ -1833,6 +1856,10 @@ msgstr ""
 
 #: syncery_ui/menu/transport_section.lua syncery_ui/status_panel.lua
 msgid "no backend"
+msgstr ""
+
+#: syncery_ui/jump_toast.lua
+msgid "page %d"
 msgstr ""
 
 #: syncery_ui/progress_browser/init.lua
@@ -2147,6 +2174,14 @@ msgstr ""
 
 #: syncery_ui/menu/transport_section.lua syncery_ui/status_panel.lua
 msgid "unsupported"
+msgstr ""
+
+#: syncery_ui/jump_toast.lua
+msgid "you are at %d%%"
+msgstr ""
+
+#: syncery_ui/jump_toast.lua
+msgid "you are on page %d"
 msgstr ""
 
 #: syncery_migration/storage_mode.lua

@@ -99,6 +99,21 @@ do
     -- gone.
     h.assert_true(src:find("jump bar IS up", 1, true) == nil,
         "regression: jump no longer drops the pending reload (own lane instead)")
+    -- Oscillation guard (same-page no-op jump): after should_prompt passes,
+    -- checkRemote suppresses the prompt when the jump would NOT change the
+    -- rendered page.  Without it two devices parked on the same page each
+    -- re-stamp recency every save and, under auto-accept, jump to each other
+    -- forever.  The check resolves the peer's xpath in OUR document (page
+    -- numbers are not comparable across devices) and fails OPEN, so a resolution
+    -- gap never silences a real jump.
+    h.assert_true(src:find("function Syncery:_jumpChangesPage", 1, true) ~= nil,
+        "wiring: the same-page oscillation guard exists")
+    h.assert_true(src:find("if not self:_jumpChangesPage(state, best) then", 1, true) ~= nil,
+        "wiring: checkRemote suppresses a no-op jump after should_prompt")
+    h.assert_true(src:find("getPageFromXPointer", 1, true) ~= nil,
+        "wiring: the guard resolves the peer xpath to a LOCAL page")
+    h.assert_true(src:find("rolling without a resolvable xpath: fail open", 1, true) ~= nil,
+        "wiring: the guard fails OPEN for rolling docs (device-local pages never silence a real jump)")
 
     -- The action bar stacks two independent lanes: per-lane view-module / touch-
     -- zone identity (view_key), M.show places the bar on spec.lane and preempts
@@ -117,6 +132,15 @@ do
             "wiring: M.dismiss tears down EVERY lane on document leave")
         h.assert_true(asrc:find("function M.defer", 1, true) == nil,
             "wiring: M.defer is gone (independent lanes replace the queue/drain)")
+        -- Lane overlap (finding C): the higher lane RESERVES the lower lane's
+        -- worst case up front, so the two never overlap in any appearance order
+        -- -- and NO shown bar is re-laid-out (a jerk under a touch mis-routes it).
+        h.assert_true(asrc:find("function lower_lane_reserve", 1, true) ~= nil,
+            "geometry: a fixed worst-case reserve lifts the higher lane")
+        h.assert_true(asrc:find("below_h + lower_lane_reserve()", 1, true) ~= nil,
+            "geometry: the lift reserves the lower lane's worst case, not this bar's own height")
+        h.assert_true(asrc:find("_lane_heights", 1, true) == nil,
+            "geometry: no last-shown-height fallback (it under-reserved a taller later lane 0)")
     end
     -- Reload affordance: when checkRemote applies changes that are only visible
     -- at the next open (annotations -- live list not mutated mid-session; AND
@@ -128,6 +152,22 @@ do
         "wiring: the reload offer helper exists")
     h.assert_true(src:find("self.ui:reloadDocument()", 1, true) ~= nil,
         "wiring: the [Reload] button triggers ReaderUI:reloadDocument")
+    -- Opt-out (issue #11): default ON.  When off, _maybeOfferReload returns
+    -- before the bar -- merged content still lands on the next open (already
+    -- staged), just no mid-session interruption.
+    h.assert_true(src:find("if not self.reload_prompt then return end", 1, true) ~= nil,
+        "wiring: _maybeOfferReload honours the reload_prompt opt-out")
+    h.assert_true(src:find('read_bool%("syncery_reload_prompt",%s+true%)') ~= nil,
+        "wiring: reload_prompt loads default ON")
+    do
+        local mf = io.open("syncery_ui/menu/init.lua", "r")
+            or io.open("../syncery_ui/menu/init.lua", "r")
+        h.assert_true(mf ~= nil, "audit: could open menu/init.lua")
+        local msrc = mf and mf:read("*a") or ""
+        if mf then mf:close() end
+        h.assert_true(msrc:find('makeBoolToggle(plugin, "reload_prompt", "syncery_reload_prompt"', 1, true) ~= nil,
+            "wiring: Advanced menu exposes the reload-prompt opt-out toggle")
+    end
     h.assert_true(src:find("self._pending_ann_reload = result.annotations_pulled", 1, true) ~= nil,
         "wiring: a remote annotation pull arms the reload offer (annotations_pulled)")
     -- Font & layout (render) changes arm the SAME affordance -- they too are only
@@ -177,13 +217,14 @@ do
     -- captures whether _promptJump actually raised a bar (true = ask/auto bar
     -- shown; false = "never" declined) and offers the reload on the declined
     -- path instead of dropping it -- so "never" cannot silently swallow incoming
-    -- annotations / render until the next open.  That makes THREE no-jump-bar
-    -- reload paths: `not best`, `not should_prompt`, and "never".
+    -- annotations / render until the next open.  That makes FOUR no-jump-bar
+    -- reload paths: `not best`, `not should_prompt`, the same-page oscillation
+    -- guard (`not _jumpChangesPage`), and "never".
     h.assert_true(src:find("local jump_shown = self:_promptJump", 1, true) ~= nil,
         "wiring: checkRemote captures whether _promptJump raised a jump bar")
     local reload_calls = select(2, src:gsub("self:_maybeOfferReload%(%)", ""))
-    h.assert_equal(reload_calls, 3,
-        "wiring: reload offered at all three no-jump-bar paths (not best / not should_prompt / 'never')")
+    h.assert_equal(reload_calls, 4,
+        "wiring: reload offered at all no-jump-bar paths (not best / not should_prompt / same-page / 'never')")
     -- jump_mode "auto" short-circuits straight to the jump.
     h.assert_true(src:find('self.jump_mode == "auto"', 1, true) ~= nil,
         "wiring: _promptJump auto-jumps in 'auto' mode")
@@ -197,4 +238,69 @@ do
         "dead code: the standalone JumpToast.show wiring is gone (notify owns it)")
     h.assert_nil(src:find("JumpToastWidget", 1, true),
         "dead code: JumpToastWidget require/use removed (toast_widget supersedes it)")
+end
+
+
+-- ----------------------------------------------------------------------------
+-- From -> to context line: WHEN the peer was there + where the reader is NOW.
+-- ----------------------------------------------------------------------------
+
+do
+    local msg = JumpToast.message{
+        remote_label = "Kindle5", percent = 0.42, chapter = "Chapter 7",
+        timestamp = 1783111042, local_percent = 0.301,
+    }
+    h.assert_true(msg:find("Kindle5 is at 42%%") ~= nil, "ctx: head line intact")
+    h.assert_true(msg:find("\n") ~= nil,                 "ctx: second line present")
+    h.assert_true(msg:find("you are at 30%%") ~= nil,    "ctx: local position shown")
+    h.assert_true(msg:find("%d%d%d%d%-%d%d%-%d%d %d%d:%d%d") ~= nil,
+        "ctx: timestamp rendered as YYYY-MM-DD HH:MM")
+end
+
+do
+    local msg = JumpToast.message{
+        remote_label = "K3", page = 120, local_page = 96, timestamp = 1783111042,
+    }
+    h.assert_true(msg:find("you are on page 96") ~= nil, "ctx: paging docs show local page")
+end
+
+do
+    local msg = JumpToast.message{ remote_label = "K3", percent = 0.5 }
+    h.assert_nil(msg:find("\n"), "ctx: no second line when no context is available")
+end
+
+-- ---------------------------------------------------------------------------
+-- fields() — the here/there cells that buildContent lays out.  (buildContent
+-- itself needs KOReader widgets, so only the pure field derivation is tested.)
+-- ---------------------------------------------------------------------------
+do
+    local f = JumpToast.fields{
+        remote_label = "Kobo", percent = 0.45, chapter = "Chapter 7",
+        local_percent = 0.30, local_chapter = "Chapter 3", timestamp = 1783111042,
+    }
+    h.assert_equal(f.peer_label, "Kobo", "fields: peer label is the remote device")
+    h.assert_true(f.peer_unit:find("45", 1, true) ~= nil, "fields: peer unit is the percent")
+    h.assert_equal(f.peer_chapter, "Chapter 7", "fields: peer chapter kept separate")
+    h.assert_true(f.here_unit:find("30", 1, true) ~= nil, "fields: here unit is the local percent")
+    h.assert_equal(f.here_chapter, "Chapter 3", "fields: here chapter kept separate")
+    h.assert_true(f.timestamp:find("%d%d%d%d%-%d%d%-%d%d %d%d:%d%d") ~= nil,
+        "fields: timestamp resolved, standalone (not glued to a unit)")
+    h.assert_nil(f.here_unit:find("%d%d%d%d", 1, false),
+        "fields: the timestamp is NOT part of a unit cell")
+end
+
+do
+    -- Paging docs: the unit is the page; no chapters resolve.
+    local f = JumpToast.fields{ remote_label = "K3", page = 120, local_page = 96 }
+    h.assert_true(f.peer_unit:find("120", 1, true) ~= nil, "fields: paging peer unit is the page")
+    h.assert_true(f.here_unit:find("96", 1, true) ~= nil, "fields: paging here unit is the local page")
+    h.assert_equal(f.peer_chapter, "—", "fields: no chapter -> em-dash placeholder")
+end
+
+do
+    -- Absent inputs -> sensible, non-nil defaults.
+    local f = JumpToast.fields{}
+    h.assert_true(f.here_label ~= "" and f.peer_label ~= "", "fields: labels always present")
+    h.assert_equal(f.peer_chapter, "—", "fields: absent chapter -> em-dash placeholder")
+    h.assert_nil(f.timestamp, "fields: no timestamp when absent")
 end

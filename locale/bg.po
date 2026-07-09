@@ -132,10 +132,6 @@ msgstr "Филтри за анотации"
 msgid "Annotations (%d)"
 msgstr "Анотации (%d)"
 
-#: main.lua
-msgid "Annotations are already synced — this only moves your reading position."
-msgstr "Анотациите вече са синхронизирани — това само премества позицията ви за четене."
-
 #: syncery_ui/menu/annotations_section.lua
 msgid "Another device's new position: %s"
 msgstr "Нова позиция на друго устройство: %s"
@@ -567,6 +563,10 @@ msgstr "Сиво"
 msgid "H: "
 msgstr "Мк: "
 
+#: syncery_ui/jump_toast.lua
+msgid "Here"
+msgstr "Тук"
+
 #: syncery_ui/annotation_viewer/viewer_lifted.lua
 msgid "Hide Duplicate Book Header: "
 msgstr "Скрий повтарящо се заглавие на книга: "
@@ -582,6 +582,16 @@ msgstr "Хоризонтален отстъп: "
 #: syncery_ui/wizard.lua
 msgid "How do you want to sync your files?"
 msgstr "Как искате да синхронизирате файловете си?"
+
+#: syncery_ui/menu/transport_section.lua
+msgid ""
+"How long to debounce after a save before uploading.\n"
+"Higher values protect rate-limited providers like Dropbox.\n"
+"Minimum 15 s; recommended 60 s."
+msgstr ""
+"Колко дълго да се изчаква след запазване, преди качване.\n"
+"По-високи стойности предпазват доставчици с ограничения на честотата като Dropbox.\n"
+"Минимум 15 с; препоръчително 60 с."
 
 #: syncery_ui/menu/db_sync_section.lua
 msgid "How often to sync Statistics and Vocabulary while you read, in minutes.  Minimum 1."
@@ -638,6 +648,10 @@ msgstr "Скачай автоматично"
 #: syncery_ui/menu/annotations_section.lua
 msgid "Jump to another device now…"
 msgstr "Скочи до друго устройство сега…"
+
+#: main.lua
+msgid "Jump to another device's position?"
+msgstr "Към позицията на другото устройство?"
 
 #: syncery_ui/progress_browser/init.lua
 msgid "Jump to most recent position"
@@ -1002,6 +1016,10 @@ msgstr ""
 msgid "Pick another device and jump to its reading position on demand.  Works in any mode, including \"Never\"."
 msgstr "Избери друго устройство и скочи до позицията му на четене при поискване.  Работи във всеки режим, включително „Никога“."
 
+#: syncery_ui/menu/transport_section.lua
+msgid "Please enter a number ≥ 15."
+msgstr "Моля, въведете число ≥ 15."
+
 #: syncery_update.lua
 msgid "Plugin update available"
 msgstr "Налично е обновление на плъгина"
@@ -1025,6 +1043,10 @@ msgstr "Лична синхронизация на файлове — засеч
 #: syncery_ui/menu/init.lua syncery_ui/progress_browser/init.lua
 msgid "Progress Browser"
 msgstr "Браузър за прогрес"
+
+#: syncery_ui/menu/init.lua
+msgid "Prompt to reload for synced content"
+msgstr "Предлагай презареждане за синхронизирано съдържание"
 
 #: syncery_ui/menu/annotations_section.lua
 msgid "Push this book's handmade TOC"
@@ -1313,6 +1335,20 @@ msgstr ""
 #: syncery_ui/menu/annotations_section.lua
 msgid "Sync font & layout"
 msgstr "Синхронизирай шрифт и оформление"
+
+#: syncery_ui/menu/annotations_section.lua
+msgid ""
+"Sync font size, font face, line spacing, font weight, and margins for individual books across devices.\n"
+"\n"
+"Off by default — most users prefer their per-device reading preferences to stay device-local (an e-ink reader has very different optimal margins than a phone screen).\n"
+"\n"
+"Only meaningful for reflowable documents (EPUB, FB2, MOBI). PDF and similar fixed-layout formats are unaffected."
+msgstr ""
+"Синхронизирай размера на шрифта, шрифта, междуредието, теглото на шрифта и полетата за отделните книги между устройствата.\n"
+"\n"
+"Изключено по подразбиране — повечето потребители предпочитат предпочитанията си за четене да остават локални за устройството (четец с електронно мастило има съвсем различни оптимални полета от екран на телефон).\n"
+"\n"
+"Има значение само за преподреждащи се документи (EPUB, FB2, MOBI). PDF и подобните формати с фиксирано оформление не се засягат."
 
 #: syncery_ui/menu/db_sync_section.lua
 msgid "Sync interval (minutes)"
@@ -1682,44 +1718,6 @@ msgstr "Обнови и рестартирай"
 msgid "Update failed."
 msgstr "Неуспешно обновление."
 
-#: syncery_ui/menu/db_sync_section.lua
-msgid "Use Syncery's cloud server"
-msgstr "Използвай облачния сървър на Синери"
-
-#: main.lua
-msgid "Vocab & Statistics not synced: enable the Cloud storage+ plugin."
-msgstr "Речник и Статистика не са синхронизирани: включи плъгина „Облачно хранилище+“."
-
-#: main.lua syncery_ui/menu/db_sync_section.lua
-msgid "Vocabulary"
-msgstr "Речник"
-
-#: syncery_ui/menu/transport_section.lua
-msgid "Wake Wi-Fi for cloud push on close"
-msgstr "Събуждай Wi-Fi за облачно изпращане при затваряне"
-
-#: syncery_ui/menu/transport_section.lua
-msgid "Wake Wi-Fi for cloud push on sleep"
-msgstr "Събуждай Wi-Fi за облачно изпращане при заспиване"
-
-#: syncery_ui/menu/annotations_section.lua
-msgid ""
-"What to do when another device reaches a new position in this book:\n"
-"\n"
-"Jump automatically — move to the new position, with a brief [Undo].\n"
-"Ask first — show a tappable note; you choose whether to jump.\n"
-"Never — stay put; this device is never moved by another.\n"
-"\n"
-"Either way you can still jump on demand from \"Jump to another device now…\" below.  Undo the last jump within 60 seconds from Menu → Syncery → This book → Undo last jump."
-msgstr ""
-"Какво да става, когато друго устройство стигне нова позиция в тази книга:\n"
-"\n"
-"Автоматичен скок — премести се на новата позиция, с кратко [Отмени].\n"
-"Питай първо — показва натискаема бележка; ти решаваш дали да скочиш.\n"
-"Никога — остани на място; това устройство никога не се мести от друго.\n"
-"\n"
-"И в двата случая можеш да скочиш при поискване от „Jump to another device now… по-долу.  Отмени последния скок до 60 секунди от Меню → Syncery → Тази книга → Отмени последния скок."
-
 #: main.lua
 msgid "Resolved progress conflicts"
 msgstr "Разрешени конфликти на напредъка"
@@ -1871,6 +1869,52 @@ msgstr[1] "Мигрирани са %d книги."
 msgid "Migrate books"
 msgstr "Мигриране на книги"
 
+#: syncery_ui/menu/db_sync_section.lua
+msgid "Use Syncery's cloud server"
+msgstr "Използвай облачния сървър на Синери"
+
+#: main.lua
+msgid "Vocab & Statistics not synced: enable the Cloud storage+ plugin."
+msgstr "Речник и Статистика не са синхронизирани: включи плъгина „Облачно хранилище+“."
+
+#: main.lua syncery_ui/menu/db_sync_section.lua
+msgid "Vocabulary"
+msgstr "Речник"
+
+#: syncery_ui/menu/transport_section.lua
+msgid "Wake Wi-Fi for cloud pull on open"
+msgstr "Събуждай Wi-Fi за облачно изтегляне при отваряне"
+
+#: syncery_ui/menu/transport_section.lua
+msgid "Wake Wi-Fi for cloud push on close"
+msgstr "Събуждай Wi-Fi за облачно изпращане при затваряне"
+
+#: syncery_ui/menu/transport_section.lua
+msgid "Wake Wi-Fi for cloud push on sleep"
+msgstr "Събуждай Wi-Fi за облачно изпращане при заспиване"
+
+#: syncery_ui/menu/annotations_section.lua
+msgid ""
+"What to do when another device reaches a new position in this book:\n"
+"\n"
+"Jump automatically — move to the new position, with a brief [Undo].\n"
+"Ask first — show a tappable note; you choose whether to jump.\n"
+"Never — stay put; this device is never moved by another.\n"
+"\n"
+"Either way you can still jump on demand from \"Jump to another device now…\" below.  Undo the last jump within 60 seconds from Menu → Syncery → This book → Undo last jump."
+msgstr ""
+"Какво да става, когато друго устройство стигне нова позиция в тази книга:\n"
+"\n"
+"Автоматичен скок — премести се на новата позиция, с кратко [Отмени].\n"
+"Питай първо — показва натискаема бележка; ти решаваш дали да скочиш.\n"
+"Никога — остани на място; това устройство никога не се мести от друго.\n"
+"\n"
+"И в двата случая можеш да скочиш при поискване от „Jump to another device now… по-долу.  Отмени последния скок до 60 секунди от Меню → Syncery → Тази книга → Отмени последния скок."
+
+#: syncery_ui/menu/init.lua
+msgid "When another device's annotations or font & layout arrive while you're reading, offer a [Reload] to apply them now. Off: they apply silently the next time you open the book."
+msgstr "Когато анотации или шрифт и оформление от друго устройство пристигнат, докато четеш, се предлага [Презареди], за да ги приложиш веднага. Изключено: прилагат се тихо при следващото отваряне на книгата."
+
 #: syncery_ui/menu/transport_section.lua
 msgid ""
 "When the device goes to sleep while offline, bring Wi-Fi up and push your latest position and annotations to the cloud before it actually sleeps — so they reach the server instead of waiting for the next time you open this book.\n"
@@ -1894,6 +1938,16 @@ msgstr ""
 "Когато затваряш книга (или излизаш от KOReader) офлайн, вдига Wi-Fi и го изчаква, преди да изпрати последната ти позиция и бележките към облака — така те наистина стигат до сървъра, вместо тихо да се задържат до някоя следваща сесия.\n"
 "\n"
 "Съобразява се с настройката на устройството „когато е нужна мрежа“: включва Wi-Fi само ако тя е зададена на автоматично включване (не „питай“ или „пренебрегни“).  Изключено по подразбиране.  Затварянето може да поспре до ~30 секунди в най-лошия случай, докато връзката се вдигне и изпращането завърши."
+
+#: syncery_ui/menu/transport_section.lua
+msgid ""
+"When you open a book (or wake the device with one open) while offline, turn Wi-Fi on and pull the latest position and annotations from the cloud — so a device that read further while this one slept can offer its position right away, instead of waiting for the next manual connection.\n"
+"\n"
+"Uses KOReader's standard connection flow: its \"Connecting to Wi-Fi…\" notice shows while the radio comes up, and the pull lands a few seconds after it clears.  Acts only when \"when network is needed\" is set to turn Wi-Fi on automatically — it never asks.  After a failed connection attempt it stays quiet for a few minutes.  Off by default."
+msgstr ""
+"Когато отваряш книга (или събуждаш устройството с отворена книга) офлайн, включва Wi-Fi и изтегля последната позиция и бележките от облака — така устройство, което е чело по-напред, докато това е спало, може веднага да предложи позицията си, вместо да чака следващото ръчно свързване.\n"
+"\n"
+"Използва стандартния поток на свързване на KOReader: неговото известие „Connecting to Wi-Fi…“ се показва, докато радиото се вдига, а изтеглянето пристига няколко секунди след като то изчезне.  Действа само когато „когато е нужна мрежа“ е зададено на автоматично включване на Wi-Fi — никога не пита.  След неуспешен опит за свързване мълчи няколко минути.  Изключено по подразбиране."
 
 #: syncery_ui/annotation_viewer/viewer_lifted.lua
 msgid "With Notes Only"
@@ -2013,6 +2067,10 @@ msgstr "никога синхронизирано"
 #: syncery_ui/menu/transport_section.lua syncery_ui/status_panel.lua
 msgid "no backend"
 msgstr "няма бекенд"
+
+#: syncery_ui/jump_toast.lua
+msgid "page %d"
+msgstr "страница %d"
 
 #: syncery_ui/progress_browser/init.lua
 msgid "page %s"
@@ -2368,6 +2426,14 @@ msgstr "синхронизира"
 msgid "unsupported"
 msgstr "неподдържан"
 
+#: syncery_ui/jump_toast.lua
+msgid "you are at %d%%"
+msgstr "ти си на %d%%"
+
+#: syncery_ui/jump_toast.lua
+msgid "you are on page %d"
+msgstr "ти си на страница %d"
+
 #: syncery_migration/storage_mode.lua
 msgid "• %d in %s"
 msgstr "• %d в %s"
@@ -2510,20 +2576,6 @@ msgstr "Анотации"
 #: syncery_ui/menu/annotations_section.lua
 msgid "Sync the per-book summary note you can leave from the book's metadata screen.  Off by default — most people don't use it, and the field is small enough that adding it to sync increases merge surface area without much benefit."
 msgstr "Синхронизирай бележката с резюме на книгата, която можете да оставите от екрана с метаданни на книгата.  Изключено по подразбиране — повечето хора не я използват, а полето е достатъчно малко, че добавянето му към синхронизирането увеличава повърхността на сливане без особена полза."
-
-#: syncery_ui/menu/annotations_section.lua
-msgid ""
-"Sync font size, font face, line spacing, font weight, and margins for individual books across devices.\n"
-"\n"
-"Off by default — most users prefer their per-device reading preferences to stay device-local (an e-ink reader has very different optimal margins than a phone screen).\n"
-"\n"
-"Only meaningful for reflowable documents (EPUB, FB2, MOBI). PDF and similar fixed-layout formats are unaffected."
-msgstr ""
-"Синхронизирай размера на шрифта, шрифта, междуредието, теглото на шрифта и полетата за отделните книги между устройствата.\n"
-"\n"
-"Изключено по подразбиране — повечето потребители предпочитат предпочитанията си за четене да остават локални за устройството (четец с електронно мастило има съвсем различни оптимални полета от екран на телефон).\n"
-"\n"
-"Има значение само за преподреждащи се документи (EPUB, FB2, MOBI). PDF и подобните формати с фиксирано оформление не се засягат."
 
 #: syncery_ui/menu/annotations_section.lua
 msgid ""
@@ -3074,20 +3126,6 @@ msgstr "Облачната дестинация е изчистена."
 #: syncery_ui/menu/transport_section.lua
 msgid "Cloud upload delay (seconds)"
 msgstr "Забавяне на облачното качване (секунди)"
-
-#: syncery_ui/menu/transport_section.lua
-msgid ""
-"How long to debounce after a save before uploading.\n"
-"Higher values protect rate-limited providers like Dropbox.\n"
-"Minimum 15 s; recommended 60 s."
-msgstr ""
-"Колко дълго да се изчаква след запазване, преди качване.\n"
-"По-високи стойности предпазват доставчици с ограничения на честотата като Dropbox.\n"
-"Минимум 15 с; препоръчително 60 с."
-
-#: syncery_ui/menu/transport_section.lua
-msgid "Please enter a number ≥ 15."
-msgstr "Моля, въведете число ≥ 15."
 
 #: syncery_ui/menu/transport_section.lua
 msgid "Checking cloud settings…"

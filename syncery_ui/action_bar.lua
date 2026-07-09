@@ -80,10 +80,32 @@ local fb_drain          -- forward decl (defined with the queue helpers below)
 local VIEW_KEY_BASE = "syncery_action_bar"
 local ZONE_ID_BASE  = "syncery_action_bar_tap"
 local LANE_COUNT    = 2  -- lane 0 = jump/undo (bottom), lane 1 = reload (above)
+
 -- Per-lane view-module / touch-zone identity so the lanes are INDEPENDENT:
 -- showing the reload (lane 1) never preempts the jump (lane 0), or vice versa.
 local function view_key(lane) return VIEW_KEY_BASE .. (lane or 0) end
 local function zone_id(lane)  return ZONE_ID_BASE  .. (lane or 0) end
+
+-- Bolder frame border than the stock window border (Size.border.window is a
+-- faint ~1.5px hairline on e-ink).  With two bars STACKED (reload over jump) a
+-- crisp outline is what visually separates them and lifts each clear of the page
+-- text showing through the gap -- the "divider line" the taller reserve needs.
+local BAR_BORDER = Screen:scaleBySize(3)
+
+-- Worst-case height of a LOWER lane, so the lane above reserves it up front and
+-- the two never overlap in any appearance order -- WITHOUT re-laying-out a shown
+-- bar.  Re-layout is a non-starter on touch: a bar jerking up under a moving
+-- finger drops the tap on empty space or the wrong button.  Fixed reserve costs
+-- only a lone reload floating a bit high (rare); a lone jump still sits at base.
+-- Lower bar = JumpToast.message; reserve up to THREE infofont lines (a long
+-- device label + chapter title can wrap past two on a narrow screen) + chrome.
+local function lower_lane_reserve()
+    local face   = Font:getFace("infofont")
+    -- ~TextBoxWidget line height (round((1+0.3)*size)); round factor up for margin.
+    local line_h = math.ceil((face and face.size or 20) * 1.4)
+    local chrome = 2 * (Size.padding.default + BAR_BORDER + Size.margin.default)
+    return 3 * line_h + chrome
+end
 
 -- Lift the bar off the very bottom by this fraction of screen height, so the
 -- jump / undo / annotation bars all sit a bit higher (clear of the footer).
@@ -162,7 +184,7 @@ function ActionBar:init()
 
     local frame = FrameContainer:new{
         background = Blitbuffer.COLOR_WHITE,
-        bordersize = Size.border.window,
+        bordersize = BAR_BORDER,
         radius     = Size.radius.window,
         padding    = frame_pad,
         margin     = Size.margin.default,
@@ -173,22 +195,23 @@ function ActionBar:init()
     self.button = button
     self.close_button = close_button
 
-    -- Lane STACKING: lane 0 sits at the base margin; each higher lane is lifted
-    -- by one (this bar's) frame height + a small gap, so multiple bars stack
-    -- bottom-up without overlapping -- the position-jump bar (lane 0) and the
-    -- [Reload] content affordance (lane 1) are INDEPENDENT axes (position vs
-    -- content) and show at the same time, one above the other.  Lane 1 lifts by
-    -- its OWN (the reload bar's) height; the reload message is the longest, so
-    -- its height >= the jump bar's and lane 1 always clears lane 0.
-    -- Span the screen MINUS that bottom margin for layout (consumes no input --
-    -- the view module is never in the input stack). BottomContainer centres and
-    -- bottom-anchors the frame within this shorter height, so the frame's bottom
-    -- edge lands at (screen_h - bottom_margin) -- lifting the whole bar.
+    -- Lane STACKING: lane 0 at base; a higher lane lifts clear of each lower
+    -- lane's RESERVED worst case (lower_lane_reserve) + a gap.  Reserving up
+    -- front means jump (lane 0) and reload (lane 1) never overlap in any order
+    -- AND no shown bar is ever moved (a jerk under a finger mis-routes the tap).
+    -- The reserve is constant, independent of this bar's height -- the old "lift
+    -- by own / by last-shown lane-0 height" shortcuts under-reserved a taller
+    -- later jump and overlapped.
+    -- BottomContainer bottom-anchors the frame in (screen_h - bottom_margin),
+    -- lifting the whole bar; the layout height consumes no input.
     local fsz           = frame:getSize()
     local lane          = self.lane or 0
     local lane_gap      = math.floor(screen_h * 0.02)
-    local bottom_margin = math.floor(screen_h * BOTTOM_MARGIN_RATIO)
-                        + lane * (fsz.h + lane_gap)
+    local below_h = 0
+    for _l = 0, lane - 1 do
+        below_h = below_h + lower_lane_reserve() + lane_gap
+    end
+    local bottom_margin = math.floor(screen_h * BOTTOM_MARGIN_RATIO) + below_h
     self[1] = BottomContainer:new{
         dimen = Geom:new{ w = screen_w, h = screen_h - bottom_margin },
         frame,
@@ -222,7 +245,7 @@ function ActionBar:init()
     -- case the two rects are split at the MIDPOINT of the inter-button gap so
     -- they meet without overlapping (an overlap would mis-route a boundary tap
     -- to whichever zone registered first).  Tune on-device if a target feels off.
-    local inset = Size.margin.default + Size.border.window + frame_pad
+    local inset = Size.margin.default + BAR_BORDER + frame_pad
     local bsz   = button:getSize()
     local btn_y = frame_y + inset + math.floor(((fsz.h - 2 * inset) - bsz.h) / 2)
 
@@ -485,13 +508,18 @@ end
 -- cancel_callback on Back / tap-outside too, so the slot is always freed).
 -- `release(false)` frees the slot WITHOUT draining the queue, so an imminent
 -- post-jump undo can claim it before any queued reload (undo shown before reload).
-function M.showExclusive(show_fn)
+-- `on_fail` (optional) runs when `show_fn` THROWS before releasing: freeing the
+-- action-bar slot is not enough, because the caller may hold its OWN re-entry
+-- guard (Syncery._active_sync_box, set before showExclusive) that only its close
+-- paths clear -- a throw would leave that guard stuck and block sync until
+-- teardown.  on_fail lets the caller run its cancellation path (e.g. stay()).
+-- It fires from BOTH the immediate and the queued run, so a deferred throw is
+-- covered too (a return value could not signal the queued case).
+function M.showExclusive(show_fn, on_fail)
     local function run()
         fb_active = true
         local released = false
-        -- show_fn must RETURN the modal widget it displayed, so M.dismiss can
-        -- close it on document teardown (it lives outside this module otherwise).
-        fb_modal = show_fn(function(drain)
+        local release = function(drain)
             if released then return end
             released = true
             fb_modal = nil
@@ -500,7 +528,24 @@ function M.showExclusive(show_fn)
             else
                 fb_drain()
             end
-        end)
+        end
+        -- show_fn must RETURN the modal widget it displayed, so M.dismiss can
+        -- close it on teardown.  pcall it: if it throws before releasing, free
+        -- the slot so queued fallbacks (undo/reload/jump) aren't stranded, and
+        -- notify the caller so it can clear its own guard.
+        local ok, modal = pcall(show_fn, release)
+        if not ok then
+            fb_modal = nil
+            if on_fail then pcall(on_fail) end
+            -- Recover fully: unless show_fn already released (threw AFTER calling
+            -- release, which drained), surface the NEXT queued fallback.  A bare
+            -- fb_active=false would free the slot but strand items already queued
+            -- behind this one (e.g. a reload queued behind a failed jump prompt)
+            -- until teardown -- fb_drain clears the slot AND pulls the next (codex).
+            if not released then fb_drain() end
+            return
+        end
+        fb_modal = modal
     end
     if fb_active then
         table.insert(fb_queue, { exclusive = run })

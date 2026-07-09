@@ -320,6 +320,15 @@ function M.make_fake_plugin(opts)
         local S = package.loaded["syncery_settings"]
         return S ~= nil and S.is_cloud_configured() == true
     end
+    -- Cloud transport ready for the open/resume PULL? (real impl: cloud.state ==
+    -- "ready").  No synchronous-provider requirement -- the pull is async-safe --
+    -- so it mirrors the same READY proxy as the wake-push gate but ignores
+    -- cloud_sync.  Gates the wake-on-open toggle (codex).
+    plugin._isCloudPullReady = function()
+        if opts.wake_transport_ready ~= nil then return opts.wake_transport_ready end
+        local S = package.loaded["syncery_settings"]
+        return S ~= nil and S.is_cloud_configured() == true
+    end
     plugin._syncBookViaOrchestrator = record("_syncBookViaOrchestrator")
     plugin.clearAnnotationCache = record("clearAnnotationCache")
     plugin._deleteAllAnnotationsForCurrentBook = record("_deleteAllAnnotationsForCurrentBook")

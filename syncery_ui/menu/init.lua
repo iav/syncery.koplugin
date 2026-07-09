@@ -138,6 +138,11 @@ function Menu.buildAdvancedMenu(plugin)
         },
         MaintSec.copyDiagnosticInfoItem(plugin),
         MaintSec.bookDataSaveIntervalItem(plugin),
+        H.makeBoolToggle(plugin, "reload_prompt", "syncery_reload_prompt",
+            _("Prompt to reload for synced content"),
+            _("When another device's annotations or font & layout arrive while "
+              .. "you're reading, offer a [Reload] to apply them now. Off: they "
+              .. "apply silently the next time you open the book.")),
         {
             text                = _("Delete and reset"),
             help_text           = _(
