@@ -194,4 +194,86 @@ do
 end
 
 
+-- ===========================================================================
+-- 7. info_fn abort mid-loop → only attempted books pushed, the rest
+--    (not-yet-reached) stay queued in .opened -- NOT dropped as if
+--    they'd synced.  Exercises the Trapper-wrap escape hatch added to
+--    sync_all's Phase 1 (pushOpenedBooks now takes an optional info_fn;
+--    teardown.lua's call site passes none and is covered by tests 1-6
+--    above, which are all still calling pushOpenedBooks(p) unchanged).
+-- ===========================================================================
+do
+    local p = make_plugin{}
+    local path = p.state_dir
+    local books = {}
+    for i = 1, 3 do
+        books[i] = path .. "abort_" .. i .. ".epub"
+        p:write_progress(books[i])
+    end
+    p:write_opened(books)
+
+    local calls = 0
+    local info_fn = function(_msg)
+        calls = calls + 1
+        return calls < 2   -- allow book #1's gate, abort before book #2
+    end
+    PluginSync.pushOpenedBooks(p, info_fn)
+
+    local pushed = 0
+    for _, c in ipairs(p._calls) do if c.m == "push" then pushed = pushed + 1 end end
+    h.assert_equal(pushed, 1, "abort after book 1 → only 1 pushed")
+    h.assert_equal(#p:read_opened(), 2, "abort → 2 not-yet-attempted books preserved")
+end
+
+
+-- ===========================================================================
+-- 8. plugin.destroyed becomes true mid-loop → same preservation as an
+--    explicit abort (checked before each info_fn call, not just at entry).
+-- ===========================================================================
+do
+    local p = make_plugin{}
+    local path = p.state_dir
+    local books = {}
+    for i = 1, 2 do
+        books[i] = path .. "destroyed_" .. i .. ".epub"
+        p:write_progress(books[i])
+    end
+    p:write_opened(books)
+
+    local calls = 0
+    local info_fn = function(_msg)
+        calls = calls + 1
+        if calls == 1 then p.destroyed = true end
+        return true
+    end
+    PluginSync.pushOpenedBooks(p, info_fn)
+
+    local pushed = 0
+    for _, c in ipairs(p._calls) do if c.m == "push" then pushed = pushed + 1 end end
+    h.assert_equal(pushed, 1, "destroyed after book 1's gate → only 1 pushed")
+    h.assert_equal(#p:read_opened(), 1, "destroyed mid-loop → 1 not-yet-attempted book preserved")
+end
+
+
+-- ===========================================================================
+-- 9. info_fn present but never aborts → identical outcome to the no-
+--    info_fn path (all pushed, .opened cleared) -- the new parameter is
+--    additive, not a behaviour change for the happy path.
+-- ===========================================================================
+do
+    local p = make_plugin{}
+    local path = p.state_dir
+    p:write_progress(path .. "happy_1.epub")
+    p:write_progress(path .. "happy_2.epub")
+    p:write_opened({ path .. "happy_1.epub", path .. "happy_2.epub" })
+
+    PluginSync.pushOpenedBooks(p, function(_msg) return true end)
+
+    local pushed = 0
+    for _, c in ipairs(p._calls) do if c.m == "push" then pushed = pushed + 1 end end
+    h.assert_equal(pushed, 2, "info_fn present, no abort → both pushed")
+    h.assert_equal(#p:read_opened(), 0, "info_fn present, no abort → .opened cleared")
+end
+
+
 h.teardown()
