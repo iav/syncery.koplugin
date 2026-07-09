@@ -265,6 +265,10 @@ msgstr ""
 msgid "Check for plugin updates"
 msgstr ""
 
+#: syncery_transports/plugin_sync.lua
+msgid "Checking device %d/%d..."
+msgstr ""
+
 #: syncery_update.lua
 msgid "Checking for plugin updates…"
 msgstr ""
@@ -370,6 +374,10 @@ msgstr ""
 
 #: syncery_ui/wizard_presenter.lua
 msgid "Done"
+msgstr ""
+
+#: syncery_transports/plugin_sync.lua
+msgid "Downloading %d/%d..."
 msgstr ""
 
 #: syncery_update.lua
@@ -1351,10 +1359,6 @@ msgstr ""
 msgid "Close"
 msgstr ""
 
-#: syncery_transports/plugin_sync.lua
-msgid "Syncing %d/%d..."
-msgstr ""
-
 #: _meta.lua
 msgid "Syncs your full reading state — position, highlights, notes, bookmarks, and book metadata — across devices as plain JSON, carried by Syncthing or cloud storage (Dropbox/WebDAV/FTP)."
 msgstr ""
@@ -1681,6 +1685,10 @@ msgstr[1] ""
 
 #: syncery_migration/storage_mode.lua
 msgid "Migrate books"
+msgstr ""
+
+#: syncery_transports/plugin_sync.lua
+msgid "Uploading %d/%d..."
 msgstr ""
 
 #: syncery_ui/menu/db_sync_section.lua
