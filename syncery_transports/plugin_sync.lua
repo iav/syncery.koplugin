@@ -493,7 +493,19 @@ function PluginSync.sync_all(plugin, opts)
                             if fh then fh:write(fb_files_hash .. "|" .. peer_hash); fh:close() end
                         end
                         if not (fb_skip_upload and fb_cached_peer_hash == peer_hash) then
-                            for book_id, remote_hash in pairs(remote_manifest.files) do
+                            -- Deterministic order: matches every other
+                            -- pairs()-then-iterate spot in this file; keeps
+                            -- "Downloading i/N..." numbering (and which
+                            -- book that is) reproducible across runs
+                            -- instead of depending on Lua's unordered
+                            -- table iteration.
+                            local remote_book_ids = {}
+                            for book_id in pairs(remote_manifest.files) do
+                                remote_book_ids[#remote_book_ids + 1] = book_id
+                            end
+                            table.sort(remote_book_ids)
+                            for _, book_id in ipairs(remote_book_ids) do
+                                local remote_hash = remote_manifest.files[book_id]
                                 local my_hash = my_manifest.files[book_id]
                                 if my_hash and my_hash ~= remote_hash then
                                     local path = listM.resolveBookPath(plugin, book_id)
@@ -631,7 +643,18 @@ function PluginSync.sync_all(plugin, opts)
                         if fh then fh:write(pl_files_hash .. "|" .. peer_hash); fh:close() end
                     end
                     if not (pl_skip_upload and pl_cached_peer_hash == peer_hash) then
-                        for book_id, remote_hash in pairs(remote.files) do
+                        -- Deterministic order: matches every other
+                        -- pairs()-then-iterate spot in this file; keeps
+                        -- "Downloading i/N..." numbering (and which book
+                        -- that is) reproducible across runs instead of
+                        -- depending on Lua's unordered table iteration.
+                        local remote_book_ids = {}
+                        for book_id in pairs(remote.files) do
+                            remote_book_ids[#remote_book_ids + 1] = book_id
+                        end
+                        table.sort(remote_book_ids)
+                        for _, book_id in ipairs(remote_book_ids) do
+                            local remote_hash = remote.files[book_id]
                             local my_hash = my_manifest.files[book_id]
                             if my_hash and my_hash ~= remote_hash then
                                 local path = listM.resolveBookPath(plugin, book_id)
