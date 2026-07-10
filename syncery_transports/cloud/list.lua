@@ -141,7 +141,12 @@ function M.downloadManifest(plugin, provider, server, device_id)
 
     local cjson = require("json")
     local ok_d, manifest = pcall(cjson.decode, content)
-    if not ok_d then
+    -- type(manifest) == "table" is required, not just ok_d: a truncated
+    -- or unexpected response body can decode successfully to a bare
+    -- JSON number/string/boolean (truthy in Lua), and the caller's
+    -- `remote.files` access would then raise "attempt to index a
+    -- number/string/boolean value" instead of failing gracefully here.
+    if not ok_d or type(manifest) ~= "table" then
         logger.warn("Syncery: invalid remote manifest JSON")
         return nil
     end
@@ -158,7 +163,11 @@ function M.resolveBookPath(plugin, book_id)
     if not f then return nil end
     local content = f:read("*a"); f:close()
     local ok, data = pcall(require("json").decode, content)
-    if not ok or not data then return nil end
+    -- type(data) == "table" is required, not just truthy: this file is
+    -- expected to be a syncery-progress envelope, but a bare JSON
+    -- number/string/boolean would otherwise pass "not data" and crash
+    -- on the .entries access below instead of failing gracefully here.
+    if not ok or type(data) ~= "table" then return nil end
     local my_device = require("syncery_util").get_device_id()
     local my_entry = data.entries and data.entries[my_device]
     if my_entry and my_entry.file then return my_entry.file end
