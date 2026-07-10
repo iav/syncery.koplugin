@@ -1533,6 +1533,10 @@ msgstr ""
 msgid "Resolved %d annotation conflict(s)"
 msgstr ""
 
+#: syncery_transports/plugin_sync.lua
+msgid "Up to date."
+msgstr ""
+
 #: syncery_update.lua
 msgid "Update & restart"
 msgstr ""
