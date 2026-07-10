@@ -975,6 +975,13 @@ msgstr ""
 msgid "Push this book's handmade TOC"
 msgstr ""
 
+#: syncery_ui/menu/status_section.lua
+msgid ""
+"Pushes every open book and publishes what changed here, then checks and pulls in whatever other devices changed (plus a Syncthing scan).\n"
+"\n"
+"Why manual, not periodic: telling other devices what changed — and checking theirs — means talking to the cloud. On a timer, that becomes frequent background network use and battery-draining Wi-Fi wake-ups while the device should be idle or asleep. Tapping it keeps that cost occasional, visible, and something you chose, not something that just happens."
+msgstr ""
+
 #: syncery_ui/menu/db_sync_section.lua
 msgid ""
 "Reading Statistics and Vocabulary Builder keep their data in their own databases, which they sync through KOReader's Cloud storage+ plugin -- over the network, with a three-way merge so two devices don't overwrite each other.\n"
@@ -1066,6 +1073,13 @@ msgstr ""
 
 #: syncery_ui/wizard.lua
 msgid "Saved locally for now — your data will sync once you set up a transport."
+msgstr ""
+
+#: syncery_ui/menu/status_section.lua
+msgid ""
+"Saves and pushes every open book to the cloud, checks what other devices changed, and pulls that in — plus a Syncthing folder scan.\n"
+"\n"
+"Syncery saves automatically as you read — use this to push right away, or to check for other devices' changes without waiting."
 msgstr ""
 
 #: syncery_ui/menu/maintenance_section.lua
@@ -1384,10 +1398,6 @@ msgstr ""
 
 #: syncery_ui/menu/transport_section.lua
 msgid "Tap to enter the Syncthing API key."
-msgstr ""
-
-#: syncery_ui/menu/status_section.lua
-msgid "Tap to save and push all opened books to the cloud."
 msgstr ""
 
 #: syncery_ui/annotation_viewer/viewer_lifted.lua
@@ -2709,13 +2719,6 @@ msgstr ""
 
 #: syncery_ui/menu/status_section.lua syncery_ui/status_section.lua
 msgid "Sync now"
-msgstr ""
-
-#: syncery_ui/menu/status_section.lua
-msgid ""
-"Save progress and annotations right now, then trigger a Syncthing folder scan so other devices receive the update immediately.\n"
-"\n"
-"Syncery saves automatically as you read — use this when you want to push an update without waiting."
 msgstr ""
 
 #: syncery_ui/menu/transport_section.lua syncery_ui/wizard.lua
