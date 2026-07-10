@@ -171,7 +171,17 @@ function M.resolveBookPath(plugin, book_id)
     local my_device = require("syncery_util").get_device_id()
     local my_entry = data.entries and data.entries[my_device]
     if my_entry and my_entry.file then return my_entry.file end
-    for _, entry in pairs(data.entries or {}) do
+    -- Deterministic fallback order: this is reached only for a bootstrapped
+    -- (never-opened-locally) book whose OWN entry has no .file yet -- pick
+    -- whichever OTHER device's path comes first, but by sorted device_id,
+    -- not raw pairs() order (which Lua does not guarantee stable, so the
+    -- same entries could otherwise resolve to a DIFFERENT peer's path on
+    -- a different run if 2+ peers recorded different native paths).
+    local device_ids = {}
+    for device_id in pairs(data.entries or {}) do device_ids[#device_ids + 1] = device_id end
+    table.sort(device_ids)
+    for _, device_id in ipairs(device_ids) do
+        local entry = data.entries[device_id]
         if entry.file then return entry.file end
     end
     return nil
