@@ -235,14 +235,25 @@ function S.sync_now(plugin)
             return _("Sync now")
         end,
         help_text = _(
-            "Save progress and annotations right now, then trigger a "
-            .. "Syncthing folder scan so other devices receive the update "
-            .. "immediately.\n\n"
-            .. "Syncery saves automatically as you read — use this when "
-            .. "you want to push an update without waiting."),
+            "Saves and pushes every open book to the cloud, checks what "
+            .. "other devices changed, and pulls that in — plus a "
+            .. "Syncthing folder scan.\n\n"
+            .. "Syncery saves automatically as you read — use this to "
+            .. "push right away, or to check for other devices' changes "
+            .. "without waiting."),
         keep_menu_open = true,
         enabled_func   = function() return true end,
-        hold_callback  = function() return _("Tap to save and push all opened books to the cloud.") end,
+        hold_callback  = function() return _(
+            "Pushes every open book and publishes what changed here, "
+            .. "then checks and pulls in whatever other devices changed "
+            .. "(plus a Syncthing scan).\n\n"
+            .. "Why manual, not periodic: telling other devices what "
+            .. "changed — and checking theirs — means talking to the "
+            .. "cloud. On a timer, that becomes frequent background "
+            .. "network use and battery-draining Wi-Fi wake-ups while "
+            .. "the device should be idle or asleep. Tapping it keeps "
+            .. "that cost occasional, visible, and something you chose, "
+            .. "not something that just happens.") end,
         callback       = H.safe("Sync now", function()
             plugin:syncNow()
         end),
