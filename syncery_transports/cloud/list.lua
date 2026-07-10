@@ -3,8 +3,8 @@
 -- =============================================================================
 --
 -- Cloud manifest functions for V4 Merkle-manifest sync.
--- Provides listRemoteBooks, resolveBookPath, generateManifest,
--- uploadManifest, and downloadManifest.
+-- Provides resolveBookPath, generateManifest, uploadManifest, and
+-- downloadManifest.
 
 local M = {}
 
@@ -166,25 +166,6 @@ function M.resolveBookPath(plugin, book_id)
         if entry.file then return entry.file end
     end
     return nil
-end
-
---- List remote book_ids by walking the cloud directory.
---- Returns a table of { book_id = true } for books with syncery-progress files.
-function M.listRemoteBooks(plugin)
-    local Settings = require("syncery_settings")
-    local server = Settings.get_cloud_server()
-    if not server then return {} end
-
-    local cjson = require("json")
-    local staging = plugin.state_dir .. "cloud_staging/"
-    local books = {}
-    for f in lfs.dir(staging) do
-        local book_id = f:match("^syncery%-progress%-(.+)%.json$")
-        if book_id then
-            books[book_id] = true
-        end
-    end
-    return books
 end
 
 return M
