@@ -489,6 +489,32 @@ function PluginSync.sync_all(plugin, opts)
                         local peer_h = sha2.md5; local peer_ctx = peer_h()
                         for _, k in ipairs(peer_keys) do peer_ctx(k); peer_ctx(remote_manifest.files[k]) end
                         local peer_hash = peer_ctx()
+                        -- KNOWN LIMITATION (deliberately not fixed -- traced,
+                        -- not overlooked): this cache is a SINGLE value, so
+                        -- with 2+ peers each iteration's write below
+                        -- overwrites the previous peer's contribution --
+                        -- only the peer that sorts LAST (peer_ids is
+                        -- alphabetical) ever gets a cache hit on the NEXT
+                        -- run; every other peer redundantly re-runs the
+                        -- local diff loop even when nothing changed for it.
+                        -- Left as-is because: (1) zero extra network calls
+                        -- either way -- downloadManifest above ALWAYS runs
+                        -- per peer regardless of this cache; only the
+                        -- local, pure-Lua per-book comparison is what gets
+                        -- skipped or not. (2) can NEVER produce a WRONG
+                        -- result -- the diff loop always reads THIS run's
+                        -- freshly-downloaded remote/my_manifest files,
+                        -- never cached data, so a redundant run just
+                        -- re-derives the same correct (usually empty)
+                        -- delta, and a correct skip only fires when the
+                        -- peer's hash is genuinely unchanged. A real fix
+                        -- needs a cache-format redesign (single value ->
+                        -- per-device map) in a function with zero test
+                        -- coverage, for a saving bounded by "iterate a
+                        -- handful of book_id strings once" -- not worth
+                        -- the regression risk. If revisiting: this is the
+                        -- ONLY thing wrong here -- upload-skip, download
+                        -- counts, and correctness are all unaffected.
                         do local fh = io.open(fb_cache_path, "wb")
                             if fh then fh:write(fb_files_hash .. "|" .. peer_hash); fh:close() end
                         end
@@ -639,6 +665,30 @@ function PluginSync.sync_all(plugin, opts)
                     local peer_h = sha2.md5; local peer_ctx = peer_h()
                     for _, k in ipairs(peer_keys) do peer_ctx(k); peer_ctx(remote.files[k]) end
                     local peer_hash = peer_ctx()
+                    -- KNOWN LIMITATION (deliberately not fixed -- traced,
+                    -- not overlooked): this cache is a SINGLE value, so
+                    -- with 2+ peers each iteration's write below overwrites
+                    -- the previous peer's contribution -- only the peer
+                    -- that sorts LAST (peer_ids is alphabetical) ever gets
+                    -- a cache hit on the NEXT run; every other peer
+                    -- redundantly re-runs the local diff loop even when
+                    -- nothing changed for it. Left as-is because: (1) zero
+                    -- extra network calls either way -- downloadManifest
+                    -- above ALWAYS runs per peer regardless of this cache;
+                    -- only the local, pure-Lua per-book comparison is what
+                    -- gets skipped or not. (2) can NEVER produce a WRONG
+                    -- result -- the diff loop always reads THIS run's
+                    -- freshly-downloaded remote/my_manifest files, never
+                    -- cached data, so a redundant run just re-derives the
+                    -- same correct (usually empty) delta, and a correct
+                    -- skip only fires when the peer's hash is genuinely
+                    -- unchanged. A real fix needs a cache-format redesign
+                    -- (single value -> per-device map) in a function with
+                    -- zero test coverage, for a saving bounded by "iterate
+                    -- a handful of book_id strings once" -- not worth the
+                    -- regression risk. If revisiting: this is the ONLY
+                    -- thing wrong here -- upload-skip, download counts,
+                    -- and correctness are all unaffected.
                     do local fh = io.open(pl_cache_path, "wb")
                         if fh then fh:write(pl_files_hash .. "|" .. peer_hash); fh:close() end
                     end
