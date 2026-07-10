@@ -276,4 +276,82 @@ do
 end
 
 
+-- ===========================================================================
+-- 10. only_book: narrows to ONE book, leaves every OTHER queued book
+--     untouched in .opened (not cleared, not treated as failed) --
+--     exercises teardown.lua's bounded Step 3 push (state.file only,
+--     never the whole worklist -- see teardown.lua's own comment on
+--     why an unbounded flush there would be bad UX with no Trapper
+--     progress/abort available).
+-- ===========================================================================
+do
+    local p = make_plugin{}
+    local path = p.state_dir
+    p:write_progress(path .. "current.epub")
+    p:write_progress(path .. "other_a.epub")
+    p:write_progress(path .. "other_b.epub")
+    p:write_opened({ path .. "current.epub", path .. "other_a.epub", path .. "other_b.epub" })
+
+    PluginSync.pushOpenedBooks(p, nil, path .. "current.epub")
+
+    local pushed = {}
+    for _, c in ipairs(p._calls) do
+        if c.m == "push" then table.insert(pushed, c.file) end
+    end
+    h.assert_equal(#pushed, 1, "only_book → exactly 1 push")
+    h.assert_equal(pushed[1], path .. "current.epub", "only_book → pushed THIS book, not the others")
+
+    local remaining = p:read_opened()
+    h.assert_equal(#remaining, 2, "only_book → the 2 other queued books are preserved, not dropped")
+end
+
+
+-- ===========================================================================
+-- 11. only_book, but that book is NOT in the worklist -> no-op, the
+--     rest of .opened is left completely alone.
+-- ===========================================================================
+do
+    local p = make_plugin{}
+    local path = p.state_dir
+    p:write_progress(path .. "queued.epub")
+    p:write_opened({ path .. "queued.epub" })
+
+    PluginSync.pushOpenedBooks(p, nil, path .. "not_queued.epub")
+
+    local pushed = 0
+    for _, c in ipairs(p._calls) do if c.m == "push" then pushed = pushed + 1 end end
+    h.assert_equal(pushed, 0, "only_book not in worklist → no push at all")
+    h.assert_equal(#p:read_opened(), 1, "only_book not in worklist → .opened untouched")
+end
+
+
+-- ===========================================================================
+-- 12. only_book that FAILS to push -> stays queued alongside the
+--     untouched others (failure and "narrowed-out" both end up back in
+--     .opened, for exactly the same reason: not yet actually synced).
+-- ===========================================================================
+do
+    local p = make_plugin{ cloud_online = true }
+    local path = p.state_dir
+    -- No progress/annotations content staged for this book -> do_cloud_upload
+    -- finds nothing to push and returns nil (not "deferred"), which
+    -- pushOpenedBooks' pcall treats as `ok=true, status=nil` -- i.e. NOT
+    -- appended to `failed`.  To force a real failure, make push_cloud_files
+    -- itself raise.
+    p:write_progress(path .. "will_fail.epub")
+    p:write_opened({ path .. "will_fail.epub", path .. "kept_too.epub" })
+    p._transport.push_cloud_files = function() error("simulated push failure") end
+
+    PluginSync.pushOpenedBooks(p, nil, path .. "will_fail.epub")
+
+    local remaining = p:read_opened()
+    table.sort(remaining)
+    local expected = { path .. "kept_too.epub", path .. "will_fail.epub" }
+    table.sort(expected)
+    h.assert_equal(#remaining, 2, "only_book failed → both the failed book AND the untouched one remain")
+    h.assert_equal(remaining[1], expected[1], "remaining set matches (entry 1)")
+    h.assert_equal(remaining[2], expected[2], "remaining set matches (entry 2)")
+end
+
+
 h.teardown()
