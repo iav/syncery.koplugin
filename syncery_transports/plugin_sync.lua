@@ -374,7 +374,7 @@ function PluginSync.sync_all(plugin, opts)
                 local fb_skip_upload = false
                 local fb_cached_peer_hash = nil
                 if my_manifest then
-                    local staging_dir = Util.state_dir() .. "cloud_staging/"
+                    local staging_dir = plugin.state_dir .. "cloud_staging/"
                     require("util").makePath(staging_dir)
                     fb_cache_path = staging_dir .. ".manifest_cache"
                     local keys = {}
@@ -408,11 +408,23 @@ function PluginSync.sync_all(plugin, opts)
                             payload = { kind = "manifest", book_id = my_device, content = manifest_json }
                         }, { force = true })
                     end
+                    -- Record OUR hash now, independent of whether any peer
+                    -- is found below: the peer loop's own write (further
+                    -- down) already overwrites this with the fuller
+                    -- "our_hash|peer_hash" pair when a peer IS found, but
+                    -- with zero peers that write never runs -- without
+                    -- this line, fb_skip_upload would never see a cache
+                    -- hit and would re-upload the SAME unchanged manifest
+                    -- on every single sync_all call, indefinitely, until
+                    -- a peer eventually appears.
+                    do local fh = io.open(fb_cache_path, "wb")
+                        if fh then fh:write(fb_files_hash); fh:close() end
+                    end
                 end
 
                 -- 2b. Discover peers from local staging files
                 local peers = {}
-                local staging_dir = Util.state_dir() .. "cloud_staging/"
+                local staging_dir = plugin.state_dir .. "cloud_staging/"
                 require("util").makePath(staging_dir)
                 local lfs = require("libs/libkoreader-lfs")
                 for f in lfs.dir(staging_dir) do
@@ -421,7 +433,17 @@ function PluginSync.sync_all(plugin, opts)
                         local content = fh:read("*a"); fh:close()
                         if content then
                             local ok_d, data = pcall(cjson.decode, content)
-                            if ok_d and data and data.entries then
+                            -- type(data) == "table" is required, not just
+                            -- truthy: a stray non-envelope file in this
+                            -- directory (e.g. .manifest_cache, a plain hash
+                            -- string) can decode successfully to a bare
+                            -- JSON number/string/boolean -- truthy in Lua,
+                            -- but indexing .entries on it raises "attempt
+                            -- to index a number/string/boolean value",
+                            -- which pcall above does NOT catch (decode
+                            -- itself succeeded; the error is in the
+                            -- .entries access right here).
+                            if ok_d and type(data) == "table" and data.entries then
                                 for device_id, _ in pairs(data.entries) do
                                     if device_id ~= my_device then
                                         peers[device_id] = true
@@ -457,7 +479,7 @@ function PluginSync.sync_all(plugin, opts)
                         if fh then
                             local raw = fh:read("*a"); fh:close()
                             local ok_d, data = pcall(cjson.decode, raw)
-                            if ok_d and data then remote_manifest = data end
+                            if ok_d and type(data) == "table" then remote_manifest = data end
                         end
                     end)
                     if remote_manifest and remote_manifest.files and my_manifest and my_manifest.files then
@@ -533,7 +555,7 @@ function PluginSync.sync_all(plugin, opts)
                 local h = sha2.md5; local ctx = h()
                 for _, k in ipairs(keys) do ctx(k); ctx(my_manifest.files[k]) end
                 pl_files_hash = ctx()
-                pl_cache_path = Util.state_dir() .. "cloud_staging/.manifest_cache"
+                pl_cache_path = plugin.state_dir .. "cloud_staging/.manifest_cache"
                 local cached_our_hash = nil
                 do local fh = io.open(pl_cache_path, "rb")
                     if fh then
@@ -553,6 +575,18 @@ function PluginSync.sync_all(plugin, opts)
                 pl_skip_upload = (cached_our_hash == pl_files_hash)
                 if not pl_skip_upload then
                     listM.uploadManifest(plugin, provider, server, my_manifest)
+                end
+                -- Record OUR hash now, independent of whether any peer is
+                -- found below: the peer loop's own write (further down)
+                -- already overwrites this with the fuller
+                -- "our_hash|peer_hash" pair when a peer IS found, but with
+                -- zero peers that write never runs -- without this line,
+                -- pl_skip_upload would never see a cache hit and would
+                -- re-upload the SAME unchanged manifest on every single
+                -- sync_all call, indefinitely, until a peer eventually
+                -- appears.
+                do local fh = io.open(pl_cache_path, "wb")
+                    if fh then fh:write(pl_files_hash); fh:close() end
                 end
             end
 
