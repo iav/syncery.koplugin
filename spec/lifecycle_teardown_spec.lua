@@ -71,7 +71,7 @@ local function make_fake_plugin(opts)
     end
     -- V4: pushOpenedBooks replaces _doCloudUpload on teardown
     local PluginSync = require("syncery_transports.plugin_sync")
-    PluginSync.pushOpenedBooks = function(plugin) record("pushOpenedBooks", plugin) end
+    PluginSync.pushOpenedBooks = function(plugin, info_fn, only_book) record("pushOpenedBooks", plugin, info_fn, only_book) end
     function plugin:_doTriggerScan(state, scan_opts)
         record("_doTriggerScan", state, scan_opts)
     end
@@ -192,6 +192,8 @@ do
     h.assert_true(plugin:called("_writeSave")             ~= nil, "Step 1: _writeSave")
     h.assert_true(plugin:called("_syncBookViaOrchestrator") ~= nil, "Step 2: orchestrator back-sync")
     h.assert_true(plugin:called("pushOpenedBooks")         ~= nil, "Step 3: pushOpenedBooks")
+    h.assert_equal(plugin:called("pushOpenedBooks").args[3], "/books/test.epub",
+        "Step 3: pushOpenedBooks bounded to THIS book (state.file), not the whole .opened worklist")
     h.assert_true(plugin:called("warm_blocking")          ~= nil, "Step 3: reachability warmed (close-time)")
     h.assert_true(plugin:called_index("warm_blocking") < plugin:called_index("pushOpenedBooks"),
         "Step 3: warm_blocking runs BEFORE pushOpenedBooks (so the gate answers inline)")
