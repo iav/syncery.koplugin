@@ -285,7 +285,32 @@ function PluginSync.sync_all(plugin, opts)
         local Trapper = require("ui/trapper")
         Trapper:wrap(function()
             Trapper:setPausedText(_("Sync paused."), _("Abort"), _("Continue"))
-            local info_fn = function(msg) return Trapper:info(msg) end
+            -- Guarded the same way as this codebase's other Trapper
+            -- call sites (main.lua's on_progress callback): info_fn is
+            -- also captured by pushOpenedBooks' and _sync_fallback's
+            -- own backoff-retry closures below, which can fire LATER
+            -- from a UIManager:scheduleIn tick (wifi_backoff.lua) --
+            -- genuinely outside any coroutine, not just this suspended
+            -- one. Trapper:info() yields internally; calling it from
+            -- outside a coroutine is exactly what coroutine.isyieldable()
+            -- exists to guard against. When not yieldable there's no
+            -- Trapper dialog to drive anyway, so "continue" is the only
+            -- sane answer -- returning false there would abort a retry
+            -- that never even reached Trapper.
+            local info_fn = function(msg)
+                if not coroutine.isyieldable() then
+                    return true
+                end
+                return Trapper:info(msg)
+            end
+
+            -- Everything below runs inside its OWN pcall so that every
+            -- early-return path (no server configured, no orch, listFolder
+            -- failure, etc.) and any error still falls through to the
+            -- Trapper:reset() right after -- otherwise whichever progress
+            -- message was last shown (e.g. "Checking device 2/2...") is
+            -- left stuck on screen with no confirmation of what happened.
+            local body_ok, body_err = pcall(function()
 
             -- Phase 1: Push
             pushOpenedBooks(plugin, info_fn)
@@ -446,6 +471,8 @@ function PluginSync.sync_all(plugin, opts)
                         end
                     end
                     _sync_fallback(changed)
+                else
+                    info_fn(_("Up to date."))
                 end
 
                 Settings.set_last_sync_all_ts(os.time())
@@ -566,9 +593,20 @@ function PluginSync.sync_all(plugin, opts)
 
             if total > 0 then
                 sync_changed(changed)
+            else
+                info_fn(_("Up to date."))
             end
 
             Settings.set_last_sync_all_ts(os.time())
+            end)   -- close body_ok pcall
+
+            -- Always close whatever InfoMessage was last shown, regardless
+            -- of which branch/early-return path was taken above, or
+            -- whether it errored.
+            Trapper:reset()
+            if not body_ok then
+                logger.warn("Syncery: sync_all inner error:", tostring(body_err))
+            end
         end)
     end)
 
