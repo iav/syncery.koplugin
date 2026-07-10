@@ -248,7 +248,16 @@ function Teardown.flush(plugin, ui_manager, util_now, logger, opts)
                 if plugin._cloud_reachability then
                     pcall(function() plugin._cloud_reachability:warm_blocking() end)
                 end
-                PluginSync.pushOpenedBooks(plugin)
+                -- Bounded to THIS book only (state.file), not the whole
+                -- .opened worklist: this flush has no Trapper progress
+                -- or abort (see above -- it must stay synchronous/inline),
+                -- so an unbounded number of blocking pushes here would
+                -- turn "close this book" into an indeterminate hang with
+                -- zero feedback, just because OTHER books were left
+                -- opened earlier in the session. Those stay queued for
+                -- the next full flush (interactive Sync Now, which DOES
+                -- have a Trapper dialog).
+                PluginSync.pushOpenedBooks(plugin, nil, state.file)
             end
 
             -- Step 4: tell Syncthing to scan our file.  The orchestrator's
