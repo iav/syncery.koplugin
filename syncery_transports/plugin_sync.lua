@@ -171,7 +171,7 @@ end
 -- pushOpenedBooks -- upload books tracked in the .opened worklist.
 -- Read — dedupe — push each unique book — delete (or keep failed retry).
 -- ----------------------------------------------------------------------------
-local function pushOpenedBooks(plugin, info_fn)
+local function pushOpenedBooks(plugin, info_fn, only_book)
     local path = plugin.state_dir .. ".opened"
     local f = io.open(path, "rb")
     if not f then return end
@@ -183,22 +183,46 @@ local function pushOpenedBooks(plugin, info_fn)
     f:close()
     if not next(opened) then return end
 
+    -- Bounded, single-book mode: teardown.lua's Step 3 passes only_book
+    -- (the book being closed) instead of flushing the whole worklist --
+    -- teardown must stay synchronous/inline with no Trapper progress or
+    -- abort (see its own comment), so it must never be on the hook for
+    -- an unbounded number of blocking pushes just because OTHER books
+    -- were left opened earlier in the session. Those stay queued for
+    -- the next full flush (interactive Sync Now, which DOES have a
+    -- Trapper dialog). Not present in the worklist -> nothing to do.
+    if only_book and not opened[only_book] then return end
+
     -- If cloud is unreachable, schedule one retry of ALL books via
     -- backoff instead of individually deferring each (which would
     -- drop subsequent attempts while the first retry is in flight).
     if not plugin:_isCloudReachable() then
         plugin._cloud_wifi_backoff:attempt{
             label = "pushOpenedBooks retry",
-            run   = function() pushOpenedBooks(plugin, info_fn) end,
+            run   = function() pushOpenedBooks(plugin, info_fn, only_book) end,
         }
         return
     end
 
     -- Deterministic order: needed for the i/total progress numbering
-    -- below, and keeps behaviour reproducible under test.
-    local books = {}
-    for book in pairs(opened) do books[#books + 1] = book end
-    table.sort(books)
+    -- below, and keeps behaviour reproducible under test.  In
+    -- only_book mode, `untouched` holds every OTHER queued book so the
+    -- rewrite below can put them back exactly as they were -- narrowing
+    -- to one book must never look like "the rest synced too".
+    local books
+    local untouched
+    if only_book then
+        books = { only_book }
+        untouched = {}
+        for book in pairs(opened) do
+            if book ~= only_book then untouched[#untouched + 1] = book end
+        end
+        table.sort(untouched)
+    else
+        books = {}
+        for book in pairs(opened) do books[#books + 1] = book end
+        table.sort(books)
+    end
 
     -- info_fn is supplied ONLY by sync_all's interactive Trapper wrap.
     -- The teardown.lua call site passes none, deliberately: that flush
@@ -235,10 +259,18 @@ local function pushOpenedBooks(plugin, info_fn)
         end
     end
 
-    if #failed > 0 then
+    -- Rewrite .opened: untouched books (only_book mode) always stay,
+    -- plus whichever processed books failed; omit the ones that
+    -- succeeded this round.
+    local remaining = untouched or {}
+    for _, book in ipairs(failed) do
+        remaining[#remaining + 1] = book
+    end
+
+    if #remaining > 0 then
         local fw = io.open(path, "wb")
         if fw then
-            for _, book in ipairs(failed) do
+            for _, book in ipairs(remaining) do
                 fw:write(book .. "\n")
             end
             fw:close()
