@@ -267,6 +267,36 @@ local function pushOpenedBooks(plugin, info_fn, only_book)
         remaining[#remaining + 1] = book
     end
 
+    -- Re-entrancy guard (additive, does not touch the logic above):
+    -- this whole function can run for a long time -- per-book blocking
+    -- network calls, further stretched by Trapper yielding between
+    -- them on the interactive info_fn path -- during which KOReader's
+    -- single-threaded event loop is free to process OTHER code that
+    -- ALSO appends to .opened. Most notably: a teardown flush for a
+    -- DIFFERENT book being closed mid-flight is synchronous (by
+    -- design -- see teardown.lua's own comment), so it can run to
+    -- completion, including its own read-modify-write of .opened,
+    -- entirely WHILE this invocation is suspended between two
+    -- Trapper:info() calls. Blindly overwriting with `remaining`
+    -- (computed only from the snapshot read at the TOP of this
+    -- function) would silently drop any book appended during that
+    -- window. Re-read fresh here and fold in anything NOT in our
+    -- original snapshot (`opened`) -- disjoint from `remaining` by
+    -- construction, so this can only ADD entries, never duplicate or
+    -- drop one that the logic above already accounted for.
+    do
+        local rf = io.open(path, "rb")
+        if rf then
+            for line in rf:lines() do
+                local book = line:gsub("%s+$", "")
+                if book ~= "" and not opened[book] then
+                    remaining[#remaining + 1] = book
+                end
+            end
+            rf:close()
+        end
+    end
+
     if #remaining > 0 then
         local fw = io.open(path, "wb")
         if fw then
