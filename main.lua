@@ -1961,6 +1961,7 @@ function Syncery:_promptJump(opts)
 
     ActionBar.show(self.ui, {
         text = JumpToast.message(jump_opts),
+        content = function(msg_w) return JumpToast.buildTouchContent(jump_opts, msg_w) end,
         button_label = JumpToast.actionLabel(),
         on_action    = jump,
         on_timeout   = stay,
