@@ -588,7 +588,7 @@ local PREFERENCE_KEYS = {
     "syncery_use_syncthing",
     "syncery_syncthing_api_key", "syncery_syncthing_folder_id",
     "syncery_syncthing_folder",
-    "syncery_syncthing_port", "syncery_syncthing_scheme",
+    "syncery_syncthing_port", "syncery_syncthing_scheme", "syncery_syncthing_host",
     -- Cloud
     "syncery_use_cloud", "syncery_cloud_server", "syncery_cloud_upload_delay",
     "syncery_wake_wifi_on_open",
