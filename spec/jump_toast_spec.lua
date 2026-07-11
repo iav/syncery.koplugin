@@ -30,15 +30,10 @@ do
     local p = JumpToast.message({ remote_label = "Tablet", percent = 0.5 })
     h.assert_true(p:find("50", 1, true) ~= nil, "message: percent fallback rounds to 50%")
 
-    -- EPUB: percent + resolved chapter -> the human anchor is appended.
-    local c = JumpToast.message({ remote_label = "Kobo", percent = 0.45, chapter = "Chapter 7" })
-    h.assert_true(c:find("45", 1, true) ~= nil, "message: percent shown with chapter")
-    h.assert_true(c:find("Chapter 7", 1, true) ~= nil, "message: resolved chapter appended")
-
-    -- An empty/missing chapter degrades to percent-only (no dangling separator).
-    local ce = JumpToast.message({ remote_label = "Kobo", percent = 0.45, chapter = "" })
-    h.assert_true(ce:find("45", 1, true) ~= nil, "message: empty chapter -> percent only")
-    h.assert_true(ce:find("Chapter", 1, true) == nil, "message: empty chapter is not shown")
+    -- No chapter in this design (deliberately simpler than the non-touch
+    -- buildContent below) -- percent/page is the whole "what".
+    local c = JumpToast.message({ remote_label = "Kobo", percent = 0.45 })
+    h.assert_true(c:find("45", 1, true) ~= nil, "message: percent shown")
 
     -- The page form is reserved for paging docs (fixed pages); when both a page
     -- and a percent are present, percent wins (the caller only passes page for
@@ -51,6 +46,11 @@ do
     h.assert_true(type(n) == "string" and #n > 0, "message: default label, no page/percent")
     h.assert_true(n:find("Another device", 1, true) ~= nil,
         "message: defaults the label to 'Another device'")
+
+    -- No "is at"/"are at" verb anywhere -- symmetric "who, when — what" on
+    -- both lines, so there is no tense to get wrong as the snapshot ages.
+    h.assert_nil(m:find(" is at ", 1, true), "message: no 'is at' verb (tense-free by design)")
+    h.assert_nil(m:find(" are at ", 1, true), "message: no 'are at' verb (tense-free by design)")
 
     h.assert_equal(JumpToast.actionLabel(), "Jump", "actionLabel is 'Jump'")
 end
@@ -247,26 +247,29 @@ end
 
 do
     local msg = JumpToast.message{
-        remote_label = "Kindle5", percent = 0.42, chapter = "Chapter 7",
-        timestamp = 1783111042, local_percent = 0.301,
+        remote_label = "Kindle5", percent = 0.42,
+        timestamp = os.time() - 3 * 3600, local_percent = 0.301,
     }
-    h.assert_true(msg:find("Kindle5 is at 42%%") ~= nil, "ctx: head line intact")
-    h.assert_true(msg:find("\n") ~= nil,                 "ctx: second line present")
-    h.assert_true(msg:find("you are at 30%%") ~= nil,    "ctx: local position shown")
-    h.assert_true(msg:find("%d%d%d%d%-%d%d%-%d%d %d%d:%d%d") ~= nil,
-        "ctx: timestamp rendered as YYYY-MM-DD HH:MM")
+    h.assert_true(msg:find("Kindle5", 1, true) ~= nil, "ctx: device label present")
+    h.assert_true(msg:find("42%%") ~= nil,              "ctx: peer percent present")
+    h.assert_true(msg:find("3 h", 1, true) ~= nil,      "ctx: relative time present (not an absolute date, no 'ago')")
+    h.assert_true(msg:find("\n") ~= nil,                "ctx: second line present")
+    h.assert_true(msg:find("This Device", 1, true) ~= nil, "ctx: 'This Device' label present")
+    h.assert_nil(msg:find("now", 1, true),
+        "ctx: no 'now' for the local side (own position is trivially always-now, so omitted)")
+    h.assert_true(msg:find("30%%") ~= nil,              "ctx: local percent present")
 end
 
 do
     local msg = JumpToast.message{
-        remote_label = "K3", page = 120, local_page = 96, timestamp = 1783111042,
+        remote_label = "K3", page = 120, local_page = 96, timestamp = os.time() - 3 * 3600,
     }
-    h.assert_true(msg:find("you are on page 96") ~= nil, "ctx: paging docs show local page")
+    h.assert_true(msg:find("page 96", 1, true) ~= nil, "ctx: paging docs show local page")
 end
 
 do
     local msg = JumpToast.message{ remote_label = "K3", percent = 0.5 }
-    h.assert_nil(msg:find("\n"), "ctx: no second line when no context is available")
+    h.assert_nil(msg:find("\n"), "ctx: no second line when there is no local position to show")
 end
 
 -- ---------------------------------------------------------------------------
@@ -276,15 +279,15 @@ end
 do
     local f = JumpToast.fields{
         remote_label = "Kobo", percent = 0.45, chapter = "Chapter 7",
-        local_percent = 0.30, local_chapter = "Chapter 3", timestamp = 1783111042,
+        local_percent = 0.30, local_chapter = "Chapter 3", timestamp = os.time() - 3 * 3600,
     }
     h.assert_equal(f.peer_label, "Kobo", "fields: peer label is the remote device")
     h.assert_true(f.peer_unit:find("45", 1, true) ~= nil, "fields: peer unit is the percent")
     h.assert_equal(f.peer_chapter, "Chapter 7", "fields: peer chapter kept separate")
     h.assert_true(f.here_unit:find("30", 1, true) ~= nil, "fields: here unit is the local percent")
     h.assert_equal(f.here_chapter, "Chapter 3", "fields: here chapter kept separate")
-    h.assert_true(f.timestamp:find("%d%d%d%d%-%d%d%-%d%d %d%d:%d%d") ~= nil,
-        "fields: timestamp resolved, standalone (not glued to a unit)")
+    h.assert_equal(f.timestamp, "3 h",
+        "fields: timestamp resolved to compact relative time, standalone (not glued to a unit)")
     h.assert_nil(f.here_unit:find("%d%d%d%d", 1, false),
         "fields: the timestamp is NOT part of a unit cell")
 end
