@@ -30,6 +30,7 @@ local store = {}
 Settings.get_syncthing_api_key = function() return store.api_key or "" end
 Settings.get_syncthing_port    = function() return store.port or 8384 end
 Settings.get_syncthing_scheme  = function() return store.scheme or "http" end
+Settings.get_syncthing_host   = function() return store.host or "127.0.0.1" end
 Settings.set_syncthing_scheme  = function(v) store.scheme = v end
 
 local H = require("syncery_ui/menu/_helpers")
