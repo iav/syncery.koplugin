@@ -97,14 +97,27 @@ local BAR_BORDER = Screen:scaleBySize(3)
 -- bar.  Re-layout is a non-starter on touch: a bar jerking up under a moving
 -- finger drops the tap on empty space or the wrong button.  Fixed reserve costs
 -- only a lone reload floating a bit high (rare); a lone jump still sits at base.
--- Lower bar = JumpToast.message; reserve up to THREE infofont lines (a long
--- device label + chapter title can wrap past two on a narrow screen) + chrome.
+-- Lower bar = JumpToast.buildTouchContent; reserve exactly TWO infofont
+-- lines. Unlike the old plain-text message (which could wrap a long device
+-- label + chapter title past two lines on a narrow screen), buildTouchContent
+-- GUARANTEES exactly two rendered lines: each line is a single, BOLD,
+-- non-wrapping TextWidget with max_width truncation -- it can never grow to
+-- a second rendered line no matter how long the device name is. There is no
+-- chapter line at all in this design. See jump_toast.lua's buildTouchContent.
+-- The undo bars (also lane 0) carry short, FIXED phrases (e.g. "Jumped to
+-- the newest position from another device." -- ~47 chars incl. the
+-- Bulgarian translation), comfortably under two (now-bold) lines at this
+-- bar's typical width; they were never the reason the old reserve was three
+-- lines (that was jump's unbounded device-name + chapter-title risk). Not
+-- pixel-verified on a real narrow/small-font device, and now also carries
+-- the bigger BUTTON_FONT_SIZE change -- flag for on-device confirmation
+-- alongside the other loadfile-only widget checks already pending there.
 local function lower_lane_reserve()
     local face   = Font:getFace("infofont")
     -- ~TextBoxWidget line height (round((1+0.3)*size)); round factor up for margin.
     local line_h = math.ceil((face and face.size or 20) * 1.4)
     local chrome = 2 * (Size.padding.default + BAR_BORDER + Size.margin.default)
-    return 3 * line_h + chrome
+    return 2 * line_h + chrome
 end
 
 -- Lift the bar off the very bottom by this fraction of screen height, so the
@@ -126,6 +139,15 @@ local TURN_OVERRIDES = {
 -- --- the drawn widget (a ReaderView view module) -----------------------------
 local ActionBar = WidgetContainer:extend{
     text         = nil,
+    content      = nil,  -- optional builder function(msg_w) -> widget[, content_w],
+                         -- REPLACING the text-based TextBoxWidget below when
+                         -- given (jump_toast.lua's buildTouchContent uses this
+                         -- for bold, truncating, guaranteed-bounded lines). A
+                         -- FUNCTION, not a pre-built widget, because msg_w
+                         -- (the available width) is only known once init()
+                         -- computes it below -- undo/reload callers pass none
+                         -- and keep the existing plain-text (now also bold)
+                         -- rendering.
     button_label = nil,
     show_close   = false,  -- when true, render a compact [✕] dismiss button to
                            -- the right of the action button (a manual "close
@@ -139,12 +161,20 @@ function ActionBar:init()
     local frame_pad = Size.padding.default
     local avail_w   = math.floor(screen_w * 0.96)  -- almost full width
 
-    -- Button is drawn for its look; the no-op callback never fires (input is
-    -- the touch zone, since a view module is not an input widget).
+    -- Bigger than Button's own default (was text_font_size=20) -- matches the
+    -- now-BOLD, possibly-two-line message instead of looking lost/small next
+    -- to it. Uniform across jump/undo/reload (this constructor is shared by
+    -- all three), not just jump -- keeps stacked lane-0/lane-1 bars visually
+    -- consistent, and is a larger touch target everywhere as a side benefit.
+    -- Starting value; on-device tuning may adjust it (see lower_lane_reserve).
+    local BUTTON_FONT_SIZE = 26
     local button = Button:new{
-        text     = self.button_label,
-        radius   = Size.radius.button,
-        callback = function() end,
+        text          = self.button_label,
+        radius        = Size.radius.button,
+        text_font_size = BUTTON_FONT_SIZE,
+        padding_h     = Size.padding.default * 2,
+        padding_v     = Size.padding.default,
+        callback      = function() end,
     }
     local gap   = Size.span.horizontal_default
 
@@ -155,9 +185,12 @@ function ActionBar:init()
     local close_reserve = 0
     if self.show_close then
         close_button = Button:new{
-            text     = "  ✕  ",
-            radius   = Size.radius.button,
-            callback = function() end,
+            text          = "  ✕  ",
+            radius        = Size.radius.button,
+            text_font_size = BUTTON_FONT_SIZE,
+            padding_h     = Size.padding.default * 2,
+            padding_v     = Size.padding.default,
+            callback      = function() end,
         }
         close_reserve = close_button:getSize().w + gap
     end
@@ -167,11 +200,33 @@ function ActionBar:init()
         msg_w = math.floor(avail_w * 0.5)
     end
 
-    local message = TextBoxWidget:new{
-        text  = self.text,
-        face  = Font:getFace("infofont"),
-        width = msg_w,
-    }
+    local message
+    if self.content then
+        -- Builder callback, called NOW that msg_w is known.  content_w (the
+        -- builder's actual, possibly-narrower-than-msg_w content width) is
+        -- accepted but not currently used here.
+        local built_ok, built = pcall(self.content, msg_w)
+        if built_ok and built then
+            message = built
+        else
+            -- Builder failed (should not happen on-device; defends the bar
+            -- from disappearing entirely over a widget-construction bug) --
+            -- fall back to the plain text rendering.
+            message = TextBoxWidget:new{
+                text  = self.text or "",
+                face  = Font:getFace("infofont"),
+                bold  = true,
+                width = msg_w,
+            }
+        end
+    else
+        message = TextBoxWidget:new{
+            text  = self.text,
+            face  = Font:getFace("infofont"),
+            bold  = true,
+            width = msg_w,
+        }
+    end
 
     local row = HorizontalGroup:new{ align = "center" }
     table.insert(row, message)
@@ -351,7 +406,7 @@ function M.show(ui, spec)
     teardown(ui, "preempt", lane)  -- one bar PER LANE at a time
 
     local bar = ActionBar:new{
-        text = spec.text, button_label = spec.button_label,
+        text = spec.text, content = spec.content, button_label = spec.button_label,
         show_close = spec.show_close, lane = lane,
     }
     bar._on_action  = spec.on_action
