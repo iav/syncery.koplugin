@@ -133,7 +133,7 @@ end
 
 
 -- ----------------------------------------------------------------------------
--- Syncthing URL is COMPUTED from scheme + port (host hardcoded), not stored.
+-- Syncthing URL is COMPUTED from scheme + port + host, not stored.
 -- ----------------------------------------------------------------------------
 
 
@@ -148,6 +148,52 @@ do
         "URL reflects the stored scheme + port")
 end
 
+
+
+-- ----------------------------------------------------------------------------
+-- Syncthing host: default 127.0.0.1; empty/nil → default; roundtrips.
+-- ----------------------------------------------------------------------------
+
+
+do
+    with_backend()
+    h.assert_equal(Settings.get_syncthing_host(), "127.0.0.1",
+        "default host 127.0.0.1")
+
+    Settings.set_syncthing_host("syncthing.example.com")
+    h.assert_equal(Settings.get_syncthing_host(), "syncthing.example.com",
+        "custom host roundtrips")
+
+    Settings.set_syncthing_host("192.168.1.100")
+    h.assert_equal(Settings.get_syncthing_host(), "192.168.1.100",
+        "IP address host roundtrips")
+
+    Settings.set_syncthing_host("")
+    h.assert_equal(Settings.get_syncthing_host(), "127.0.0.1",
+        "empty string → default host")
+
+    Settings.set_syncthing_host("   ")
+    h.assert_equal(Settings.get_syncthing_host(), "127.0.0.1",
+        "whitespace-only → default host")
+end
+
+
+-- ----------------------------------------------------------------------------
+-- Syncthing URL with custom host.
+-- ----------------------------------------------------------------------------
+
+
+do
+    with_backend()
+    Settings.set_syncthing_host("syncthing.example.com")
+    h.assert_equal(Settings.get_syncthing_url(), "http://syncthing.example.com:8384",
+        "URL uses custom host with default port")
+
+    Settings.set_syncthing_port(9000)
+    Settings.set_syncthing_scheme("https")
+    h.assert_equal(Settings.get_syncthing_url(), "https://syncthing.example.com:9000",
+        "URL uses custom host + custom port + https")
+end
 
 -- ----------------------------------------------------------------------------
 -- Syncthing port: default 8384; only 1024-65535 persists; corrupt → default.
