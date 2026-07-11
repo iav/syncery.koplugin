@@ -408,6 +408,14 @@ msgstr ""
 msgid "Default"
 msgstr ""
 
+#: syncery_ui/menu/transport_section.lua
+msgid "Default: 127.0.0.1. Change if Syncthing runs on a different host. Use an IP address or hostname."
+msgstr ""
+
+#: syncery_ui/menu/transport_section.lua
+msgid "Default: 127.0.0.1. Use an IP address or hostname."
+msgstr ""
+
 #: main.lua
 msgid "Delete these sync files permanently? No book files will be touched."
 msgstr ""
@@ -1422,6 +1430,14 @@ msgid "Syncs your full reading state — position, highlights, notes, bookmarks,
 msgstr ""
 
 #: syncery_ui/menu/transport_section.lua
+msgid "Syncthing host"
+msgstr ""
+
+#: syncery_ui/menu/transport_section.lua
+msgid "Syncthing host set to %s."
+msgstr ""
+
+#: syncery_ui/menu/transport_section.lua
 msgid ""
 "Syncthing is reachable and the API key is valid.\n"
 "\n"
@@ -1438,6 +1454,10 @@ msgstr ""
 
 #: syncery_ui/menu/per_book_section.lua
 msgid "Tap a status below to keep it on all your devices."
+msgstr ""
+
+#: syncery_ui/menu/transport_section.lua
+msgid "Tap to change the Syncthing GUI host."
 msgstr ""
 
 #: syncery_ui/menu/transport_section.lua
@@ -1533,6 +1553,10 @@ msgstr ""
 
 #: syncery_ui/annotation_viewer/viewer_lifted.lua
 msgid "T≠ "
+msgstr ""
+
+#: syncery_ui/menu/transport_section.lua
+msgid "URL Host: %s"
 msgstr ""
 
 #: syncery_ui/menu/per_book_section.lua
