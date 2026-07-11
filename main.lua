@@ -2785,6 +2785,28 @@ function Syncery:_maybeOfferReload()
     })
 end
 
+--- Resolve how many pages apart the remote entry is from OUR device's
+--- current position, on OUR pagination.  Returns nil when unresolvable
+--- (paging-doc gap, no xpath, unresolvable anchor) -- caller treats nil as
+--- "no signal", NOT as "zero delta".
+function Syncery:_resolveRemotePageDelta(state, best)
+    if not state.is_rolling then
+        local rp, sp = tonumber(best.page), tonumber(state.page)
+        if rp and sp then return math.abs(rp - sp) end
+        return nil
+    end
+    local doc = self.ui and self.ui.document
+    if doc and type(best.xpath) == "string" and best.xpath ~= ""
+            and ProgressBridge.xpointer_resolves(doc, best.xpath) then
+        local ok_t, target = pcall(doc.getPageFromXPointer, doc, best.xpath)
+        local ok_c, cur    = pcall(doc.getCurrentPage, doc)
+        if ok_t and ok_c and type(target) == "number" and type(cur) == "number" then
+            return math.abs(target - cur)
+        end
+    end
+    return nil
+end
+
 
 --- Would a jump to `best` actually land the reader on a DIFFERENT rendered page
 --- than the one they are on now?
@@ -2840,12 +2862,12 @@ function Syncery:checkRemote()
     local state = self:getCurrentState()
     if not state or not self:_isFileTypeSynced(state.file) then return end
 
-    -- The "new annotations -- reload" offer is decided fresh each tick: the
-    -- orchestrator path below sets it if it pulls anything; the jump section
-    -- consumes it (offering the bar only when no position jump pre-empts).
-    -- Reset here so a stale offer from a previous tick can't leak through.
-    self._pending_ann_reload = nil
-    self._pending_render_reload = nil
+    -- The "new annotations -- reload" offer: the orchestrator path below
+    -- sets the pending flags if it pulls anything; autosave (_save) also
+    -- arms them via _syncBookViaOrchestrator.  Not cleared here -- a stale
+    -- offer cannot leak through because _maybeOfferReload clears on consume
+    -- and un-consumed flags (from autosave or a jump-pre-empted tick)
+    -- represent valid pending data that should still be offered.
 
     -- The jump shown (if any) THIS tick, captured for the reload handoff:
     -- cleared fresh each tick so a stale target from a previous tick can never
@@ -2997,9 +3019,10 @@ function Syncery:checkRemote()
     -- policy in syncery_ui/jump_policy.lua: re-prompt suppression (PER
     -- DEVICE, by revision — not by comparing our own save-count against a
     -- remote's) AND a substantive percent/xpath delta.
+    local page_delta = self:_resolveRemotePageDelta(state, best)
     if not JumpPolicy.should_prompt(
             best, best_device_id, self.acked_remote_revs,
-            state.percent, state.xpath) then
+            state.percent, state.xpath, page_delta) then
         -- Jump suppressed (already acked / no substantive delta) -- offer the
         -- annotation reload instead.
         self:_maybeOfferReload()
