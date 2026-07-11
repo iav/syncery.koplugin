@@ -70,14 +70,14 @@ function ManualProvider.new(settings_reader)
         local api_key   = settings_reader("syncery_syncthing_api_key")
         local folder_id = settings_reader("syncery_syncthing_folder_id")
 
-        -- Readiness hinges on the API key alone: the daemon is always on the
-        -- loopback, so its URL is COMPUTED (host 127.0.0.1 + the stored
-        -- scheme/port), never user-entered.
+        -- Readiness hinges on the API key alone: the URL is COMPUTED from
+        -- the stored host/scheme/port, never user-entered as a full string.
         if type(api_key) ~= "string" or api_key == "" then return nil end
 
         local url = LocalUrl.build(
             settings_reader("syncery_syncthing_scheme"),
-            settings_reader("syncery_syncthing_port"))
+            settings_reader("syncery_syncthing_port"),
+            settings_reader("syncery_syncthing_host"))
 
         return {
             url       = url,
