@@ -83,7 +83,7 @@ local KEY_SYNCTHING_FOLDER_ID = "syncery_syncthing_folder_id"
 local KEY_SYNCTHING_FOLDER    = "syncery_syncthing_folder"
 local KEY_SYNCTHING_PORT      = "syncery_syncthing_port"
 local KEY_SYNCTHING_SCHEME    = "syncery_syncthing_scheme"
-
+local KEY_SYNCTHING_HOST      = "syncery_syncthing_host"
 
 -- Cloud server descriptor.  Persisted as a Lua table — the new cloud
 -- transport reads it with `type(server) == "table"`, which is what
@@ -220,12 +220,12 @@ function Settings.get_cloud_enabled()     return gs(KEY_CLOUD_ENABLED, false) ==
 -- ----------------------------------------------------------------------------
 
 
---- The Syncthing GUI base URL is COMPUTED, not stored: host is always the
---- loopback (Syncery syncs local files, so the daemon is on this device), the
---- scheme is auto-detected by the connection test, and the port is an
---- overridable Advanced setting.  See syncery_transports/syncthing/local_url.
+--- The Syncthing GUI base URL is COMPUTED, not stored: host defaults to
+--- loopback (user-overridable Advanced setting), scheme is auto-detected
+--- by the connection test, and the port is an overridable Advanced setting.
+--- See syncery_transports/syncthing/local_url.
 function Settings.get_syncthing_url()
-    return LocalUrl.build(Settings.get_syncthing_scheme(), Settings.get_syncthing_port())
+    return LocalUrl.build(Settings.get_syncthing_scheme(), Settings.get_syncthing_port(), Settings.get_syncthing_host())
 end
 
 
@@ -289,6 +289,21 @@ function Settings.set_syncthing_scheme(v)
 end
 
 
+
+--- Host of the Syncthing GUI.  Default 127.0.0.1; empty string resets to
+--- default.  Useful when Syncthing runs on a different host (container,
+--- VM, LAN).  No format validation — connection test reveals reachability.
+function Settings.get_syncthing_host()
+    local s = gs(KEY_SYNCTHING_HOST, "127.0.0.1")
+    if type(s) ~= "string" then return "127.0.0.1" end
+    s = s:match("^%s*(.-)%s*$") or ""
+    return s ~= "" and s or "127.0.0.1"
+end
+function Settings.set_syncthing_host(v)
+    local s = type(v) == "string" and v:match("^%s*(.-)%s*$") or ""
+    ss(KEY_SYNCTHING_HOST, s ~= "" and s or "127.0.0.1")
+    fire("syncthing")
+end
 
 
 -- ----------------------------------------------------------------------------
