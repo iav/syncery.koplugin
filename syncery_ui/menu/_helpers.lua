@@ -367,13 +367,14 @@ function H.test_syncthing_connection(callback, client_factory)
     local api_key = Settings.get_syncthing_api_key()
     if api_key == "" then callback(false, nil, "no_api_key"); return end
     local port = Settings.get_syncthing_port()
+    local host = Settings.get_syncthing_host()
 
     -- One attempt at a given scheme.  on_done(ok, code|nil, diag, conn_miss):
     -- conn_miss is true ONLY for a no-response failure (so the caller may retry
     -- the other scheme); any HTTP answer — success or rejection — sets it false.
     local function attempt(scheme, on_done)
         local client = client_factory({
-            base_url    = LocalUrl.build(scheme, port),
+            base_url    = LocalUrl.build(scheme, port, host),
             headers     = { ["X-API-Key"] = api_key },
             timeout_sec = 6,
         })
