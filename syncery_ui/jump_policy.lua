@@ -63,6 +63,13 @@ JumpPolicy.PERCENT_EPSILON    = 0.001
 -- their own — only if the xpath (rolling-doc DOM anchor) also changed.
 JumpPolicy.SYNC_TRIGGER_DELTA = 0.005
 
+-- Absolute page-delta floor: in a long book a real page gap can still be a
+-- tiny percent. When the remote entry is at least this many pages away on
+-- OUR pagination, treat it as substantial regardless of percent. Optional
+-- 5th param of moved_substantially -- callers/tests that omit it keep the
+-- old percent-only behaviour unchanged.
+JumpPolicy.PAGE_DELTA_FLOOR = 2
+
 -- How long after open/resume the session recency baseline stays alive
 -- (seconds).  Within this grace window the reader may flip pages to orient
 -- without forfeiting an incoming jump; after it the device's own recency is
@@ -77,7 +84,10 @@ JumpPolicy.SESSION_JUMP_WINDOW_S = 60
 --- percent wobble is no move; a small-but-real percent change counts only
 --- when the xpath also changed.  Consumed by should_prompt; kept as a public
 --- helper so future callers share one threshold instead of re-deriving it.
-function JumpPolicy.moved_substantially(a_percent, a_xpath, b_percent, b_xpath)
+function JumpPolicy.moved_substantially(a_percent, a_xpath, b_percent, b_xpath, page_delta)
+    if type(page_delta) == "number" and page_delta >= JumpPolicy.PAGE_DELTA_FLOOR then
+        return true
+    end
     local delta = math.abs((tonumber(b_percent) or 0) - (tonumber(a_percent) or 0))
     if delta <= JumpPolicy.PERCENT_EPSILON then return false end
     if delta <= JumpPolicy.SYNC_TRIGGER_DELTA
@@ -86,7 +96,6 @@ function JumpPolicy.moved_substantially(a_percent, a_xpath, b_percent, b_xpath)
     end
     return true
 end
-
 
 --- Decide whether to raise a jump prompt for the best remote entry.
 ---
@@ -102,7 +111,7 @@ end
 --- @param l_percent number|nil This device's current percent (0..1).
 --- @param l_xpath string|nil This device's current xpath, or nil.
 --- @return boolean True = raise the jump prompt; false = suppress.
-function JumpPolicy.should_prompt(best_entry, best_device_id, acked_map, l_percent, l_xpath)
+function JumpPolicy.should_prompt(best_entry, best_device_id, acked_map, l_percent, l_xpath, page_delta)
     if type(best_entry) ~= "table" then return false end
     acked_map = acked_map or {}
 
@@ -121,7 +130,7 @@ function JumpPolicy.should_prompt(best_entry, best_device_id, acked_map, l_perce
     if r_rev <= acked_rev then return false end
 
     -- 2. Substantive delta — is it actually worth jumping?
-    return JumpPolicy.moved_substantially(l_percent, l_xpath, r_percent, r_xpath)
+    return JumpPolicy.moved_substantially(l_percent, l_xpath, r_percent, r_xpath, page_delta)
 end
 
 
