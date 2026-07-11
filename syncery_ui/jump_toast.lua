@@ -17,17 +17,54 @@
 
 local I18n = require("syncery_i18n")
 local _    = I18n.translate
+local _n   = I18n.ngettext
 
 
 local JumpToast = {}
 
 
+-- Compact relative time bucket ("<1 min", "2 days", "1 week", "4 months",
+-- "1 year"), for the peer's recency badge. jump_toast-local by design: the 6
+-- other "N ago" spots in this codebase (booklist, status panels, trash) are
+-- each a PERSISTENT screen, not a transient toast, and were deliberately
+-- left alone rather than force-migrated to this format. Minutes/hours use a
+-- short, non-inflecting unit ("min"/"h") since they don't need a plural
+-- form; day/week/month/year are properly pluralized via ngettext (English
+-- "1 day" vs "2 days"; Bulgarian's own singular/plural forms, independent
+-- rule, via the .po file's plural entries -- NOT assumed to mirror
+-- English's). Returns nil for a missing/non-positive timestamp (caller
+-- omits the badge/line entirely).
+function JumpToast._relativeAgo(timestamp)
+    if type(timestamp) ~= "number" or timestamp <= 0 then return nil end
+    local age = os.difftime(os.time(), timestamp)
+    -- Clock skew (remote's clock briefly ahead of ours): clamp to the
+    -- lowest bucket rather than showing a negative/nonsensical duration.
+    if age < 0 then age = 0 end
+    if age < 60 then
+        return _("<1 min")
+    elseif age < 3600 then
+        return string.format(_("%d min"), math.floor(age / 60))
+    elseif age < 86400 then
+        return string.format(_("%d h"), math.floor(age / 3600))
+    elseif age < 604800 then
+        local n = math.floor(age / 86400)
+        return string.format(_n("%d day", "%d days", n), n)
+    elseif age < 2592000 then -- < 30 days
+        local n = math.floor(age / 604800)
+        return string.format(_n("%d week", "%d weeks", n), n)
+    elseif age < 31536000 then -- < 365 days
+        local n = math.floor(age / 2592000)
+        return string.format(_n("%d month", "%d months", n), n)
+    else
+        local n = math.floor(age / 31536000)
+        return string.format(_n("%d year", "%d years", n), n)
+    end
+end
+
+
 -- The invitation message. `opts`:
 --   remote_label  string|nil  device name (defaults to "Another device")
 --   percent       number|nil  fraction 0..1 -- the cross-device-stable unit
---   chapter       string|nil  resolved chapter title (from the shared font-
---                             independent xpointer); shown only alongside
---                             percent, as the human anchor
 --   page          number|nil  a FIXED page number -- only for paging docs
 --                             (PDF/CBZ), where pages coincide across devices
 --   timestamp     number|nil  when the remote device was there (unix)
@@ -36,48 +73,54 @@ local JumpToast = {}
 --
 -- The remote device's stored PAGE is device-LOCAL for reflowable books (each
 -- device re-lays-out the text with its own font/screen), so it is never shown
--- for them -- the caller passes `percent` (+ resolved `chapter`) instead, and
--- passes `page` only for paging docs whose pages are identical everywhere.
+-- for them -- the caller passes `percent` instead, and passes `page` only for
+-- paging docs whose pages are identical everywhere. No chapter here (kept
+-- deliberately simpler than the non-touch buildContent below).
 --
--- A jump is a from -> to decision: the second line shows WHEN the peer was
--- there and where the reader is NOW, so "Jump or Stay" is answerable without
--- opening the progress browser first (field request).
+-- Symmetric "who, when — what" structure on both lines -- no "is at"/"are
+-- at" verb, so there is no tense to get wrong as the peer's snapshot ages
+-- (see session history: "is at" reads as still-true, "was at" undersells the
+-- very recency that made the prompt fire at all -- dropping the verb
+-- sidesteps the problem instead of picking a side). Recency, not position,
+-- is the actual reason a prompt exists at all (jump_policy.lua: "forward
+-- means newer, not necessarily ahead in the document") -- leading each line
+-- with the "when" keeps that the natural reading order.
+--   Samsung, 2 days: 42%
+--   This Device: 19%
 function JumpToast.message(opts)
     opts = opts or {}
     local label = opts.remote_label or _("Another device")
-    local head
-    -- Reflowable (EPUB): percent is comparable across devices; the resolved
-    -- chapter is the meaningful anchor when available.
+
+    local unit
     if type(opts.percent) == "number" then
-        local pct = math.floor(opts.percent * 100 + 0.5)
-        if type(opts.chapter) == "string" and opts.chapter ~= "" then
-            head = string.format(_("%s is at %d%% — %s"), label, pct, opts.chapter)
-        else
-            head = string.format(_("%s is at %d%%"), label, pct)
-        end
-    -- Paging (PDF/CBZ): the page is fixed across devices, so it is the natural
-    -- stable unit; the caller passes it only for these docs.
+        unit = string.format("%d%%", math.floor(opts.percent * 100 + 0.5))
     elseif type(opts.page) == "number" then
-        head = string.format(_("%s is on page %d"), label, opts.page)
-    else
-        head = string.format(_("%s is at a new position"), label)
+        unit = string.format(_("page %d"), opts.page)
     end
 
-    local ctx = {}
-    if type(opts.timestamp) == "number" and opts.timestamp > 0 then
-        -- Numeric ISO-ish date: locale-neutral, no month-name i18n.
-        ctx[#ctx + 1] = os.date("%Y-%m-%d %H:%M", opts.timestamp)
+    local lines = {}
+    if unit then
+        local ago = JumpToast._relativeAgo(opts.timestamp) or _("<1 min")
+        lines[#lines + 1] = string.format(_("%s, %s: %s"), label, ago, unit)
+    else
+        lines[#lines + 1] = string.format(_("%s is at a new position"), label)
     end
+
+    local you_unit
     if type(opts.local_percent) == "number" then
-        ctx[#ctx + 1] = string.format(_("you are at %d%%"),
-            math.floor(opts.local_percent * 100 + 0.5))
+        you_unit = string.format("%d%%", math.floor(opts.local_percent * 100 + 0.5))
     elseif type(opts.local_page) == "number" then
-        ctx[#ctx + 1] = string.format(_("you are on page %d"), opts.local_page)
+        you_unit = string.format(_("page %d"), opts.local_page)
     end
-    if #ctx > 0 then
-        head = head .. "\n" .. table.concat(ctx, " · ")
+    if you_unit then
+        -- No "when" here, unlike the peer line: your own position is
+        -- definitionally now -- there is no other time it could be, so a
+        -- time word here is pure noise, not information (unlike the peer's
+        -- "when", which genuinely varies and is worth reading).
+        lines[#lines + 1] = string.format(_("%s: %s"), _("This Device"), you_unit)
     end
-    return head
+
+    return table.concat(lines, "\n")
 end
 
 
@@ -104,11 +147,7 @@ function JumpToast.fields(opts)
         -- like "Beginning" that a sectionless or mid-gap position would falsify.
         return "—"
     end
-    local timestamp
-    if type(opts.timestamp) == "number" and opts.timestamp > 0 then
-        -- Numeric ISO-ish date: locale-neutral, no month-name i18n.
-        timestamp = os.date("%Y-%m-%d %H:%M", opts.timestamp)
-    end
+    local timestamp = JumpToast._relativeAgo(opts.timestamp)
     return {
         here_label   = _("Here"),
         here_unit    = unit(opts.local_percent, opts.local_page),
@@ -129,7 +168,7 @@ end
 --   Here          3%
 --   <our chapter>       (wraps within the chosen width)
 --   (gap)
---   Kindle3WiFi   19% · 2026-07-05 03:30
+--   Kindle3WiFi   19% · 3h
 --   <peer chapter>
 -- The device NAME sits in a fixed-width column so the units line up vertically;
 -- the unit (+ the peer's timestamp) follows, and the chapter gets its own
@@ -213,6 +252,112 @@ function JumpToast.buildContent(opts, max_w)
         side(n_peer, f.peer_unit, f.timestamp, f.peer_chapter),
     }
     return group, content_w
+end
+
+
+-- The two-line touch-bar version: BOLD, guaranteed bounded (never wraps),
+-- with an INVERTED (white-on-black) badge around the peer's recency bucket
+-- -- the one thing that actually decides whether a jump is worth it (see
+-- jump_policy.lua: "forward means newer, not necessarily ahead in the
+-- document" -- a prompt exists at all only because the peer is NEWER, not
+-- because it is further along).
+--   Samsung, [2 days]: 42%
+--   This Device: 19%
+-- Each row is split into pieces, not one flat string: the device NAME
+-- (unbounded -- user-chosen, can be arbitrarily long) gets whatever width is
+-- left after the badge + the ": <what>" suffix (both short, fixed-length) --
+-- so the suffix, specifically the percent/page (the actual navigational
+-- target: where you'd land), is NEVER truncated away, whatever the name's
+-- length. An earlier, simpler version capped the WHOLE line in one
+-- TextWidget and truncated the percent itself away entirely for a long
+-- device name -- confirmed on-device ("KindlePaperWhite6, just now…" with
+-- the percent silently gone); this split is the fix, not a style choice.
+-- "This Device" carries no badge -- its own position has no comparable
+-- "when" (always now), so nothing there needs highlighting. Returns
+-- (widget, content_w), same shape as buildContent above.
+function JumpToast.buildTouchContent(opts, max_w)
+    local TextWidget      = require("ui/widget/textwidget")
+    local HorizontalGroup = require("ui/widget/horizontalgroup")
+    local VerticalGroup   = require("ui/widget/verticalgroup")
+    local VerticalSpan    = require("ui/widget/verticalspan")
+    local HorizontalSpan  = require("ui/widget/horizontalspan")
+    local FrameContainer  = require("ui/widget/container/framecontainer")
+    local Blitbuffer      = require("ffi/blitbuffer")
+    local Font            = require("ui/font")
+    local Size            = require("ui/size")
+
+    opts = opts or {}
+    local face = Font:getFace("infofont")
+    local gap  = Size.span.horizontal_default
+
+    local function badge(text)
+        local badge_tw = TextWidget:new{
+            text = text, face = face, bold = true, fgcolor = Blitbuffer.COLOR_WHITE,
+        }
+        return FrameContainer:new{
+            background     = Blitbuffer.COLOR_BLACK,
+            bordersize     = 0,
+            margin         = 0,
+            padding_top    = Size.padding.small,
+            padding_bottom = Size.padding.small,
+            padding_left   = Size.padding.default,
+            padding_right  = Size.padding.default,
+            badge_tw,
+        }
+    end
+
+    local peer_label = opts.remote_label or _("Another device")
+    local unit
+    if type(opts.percent) == "number" then
+        unit = string.format("%d%%", math.floor(opts.percent * 100 + 0.5))
+    elseif type(opts.page) == "number" then
+        unit = string.format(_("page %d"), opts.page)
+    end
+
+    local rows = { align = "left" }
+    local content_w = 0
+
+    if unit then
+        local ago_bucket = JumpToast._relativeAgo(opts.timestamp) or _("<1 min")
+        local ago_badge  = badge(ago_bucket)
+        local suffix_tw  = TextWidget:new{ text = string.format(_(": %s"), unit), face = face, bold = true }
+        local reserved   = ago_badge:getSize().w + gap + suffix_tw:getSize().w
+        local name_w     = math.max(0, max_w - reserved)
+        local name_tw    = TextWidget:new{ text = peer_label .. ",", face = face, bold = true, max_width = name_w }
+        local peer_row = HorizontalGroup:new{
+            align = "center",
+            name_tw, HorizontalSpan:new{ width = gap }, ago_badge, suffix_tw,
+        }
+        content_w = math.max(content_w, peer_row:getSize().w)
+        table.insert(rows, peer_row)
+    else
+        local single = TextWidget:new{
+            text = string.format(_("%s is at a new position"), peer_label),
+            face = face, bold = true, max_width = max_w,
+        }
+        content_w = math.max(content_w, single:getSize().w)
+        table.insert(rows, single)
+    end
+
+    local you_unit
+    if type(opts.local_percent) == "number" then
+        you_unit = string.format("%d%%", math.floor(opts.local_percent * 100 + 0.5))
+    elseif type(opts.local_page) == "number" then
+        you_unit = string.format(_("page %d"), opts.local_page)
+    end
+    if you_unit then
+        table.insert(rows, VerticalSpan:new{ width = Size.padding.small })
+        -- No badge, no "when" here, unlike the peer row -- your own
+        -- position is definitionally now, nothing to highlight or say.
+        local you_tw = TextWidget:new{
+            text = string.format(_("%s: %s"), _("This Device"), you_unit),
+            face = face, bold = true, max_width = max_w,
+        }
+        content_w = math.max(content_w, you_tw:getSize().w)
+        table.insert(rows, you_tw)
+    end
+
+    return VerticalGroup:new(rows), content_w
 end
 
 
