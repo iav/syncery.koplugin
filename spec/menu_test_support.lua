@@ -182,6 +182,7 @@ function M.install_stubs(opts)
         get_syncthing_folder      = nil,
         get_syncthing_port        = 8384,
         get_syncthing_scheme      = "http",
+        get_syncthing_host        = "127.0.0.1",
         is_cloud_configured       = false,
         describe_cloud_server     = nil,
     }
