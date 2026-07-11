@@ -41,11 +41,31 @@ msgstr[1] "%d книги не са на това устройство — нищ
 msgid "%d d ago"
 msgstr "преди %d дни"
 
+#: syncery_ui/jump_toast.lua
+msgid "%d day"
+msgid_plural "%d days"
+msgstr[0] "%d ден"
+msgstr[1] "%d дни"
+
 #: main.lua
 msgid "%d file was skipped — its book could not be identified, so it was left untouched."
 msgid_plural "%d files were skipped — their book could not be identified, so they were left untouched."
 msgstr[0] "%d файл е пропуснат — книгата му не можа да бъде разпозната и е оставен непокътнат."
 msgstr[1] "%d файла са пропуснати — книгата им не можа да бъде разпозната и са оставени непокътнати."
+
+#: syncery_ui/jump_toast.lua
+msgid "%d h"
+msgstr "%d ч"
+
+#: syncery_ui/jump_toast.lua
+msgid "%d min"
+msgstr "%d мин"
+
+#: syncery_ui/jump_toast.lua
+msgid "%d month"
+msgid_plural "%d months"
+msgstr[0] "%d месец"
+msgstr[1] "%d месеца"
 
 #: main.lua
 msgid "%d new annotation from another device"
@@ -58,8 +78,24 @@ msgid "%d of %d"
 msgstr "%d от %d"
 
 #: syncery_ui/jump_toast.lua
-msgid "%s is at %d%% — %s"
-msgstr "%s е на %d%% — %s"
+msgid "%d week"
+msgid_plural "%d weeks"
+msgstr[0] "%d седмица"
+msgstr[1] "%d седмици"
+
+#: syncery_ui/jump_toast.lua
+msgid "%d year"
+msgid_plural "%d years"
+msgstr[0] "%d година"
+msgstr[1] "%d години"
+
+#: syncery_ui/jump_toast.lua
+msgid "%s, %s: %s"
+msgstr "%s, %s: %s"
+
+#: syncery_ui/jump_toast.lua
+msgid "%s: %s"
+msgstr "%s: %s"
 
 #: syncery_ui/status_section.lua
 msgid "%s: no backend"
@@ -79,6 +115,14 @@ msgstr "(.stignore не е записан: %s)"
 #: syncery_ui/progress_browser/init.lua
 msgid "(sync conflict: merge pending)"
 msgstr "(sync-конфликт: предстои обединяване)"
+
+#: syncery_ui/jump_toast.lua
+msgid ": %s"
+msgstr ": %s"
+
+#: syncery_ui/jump_toast.lua
+msgid "<1 min"
+msgstr "<1 мин"
 
 #: syncery_ui/annotation_viewer/viewer_lifted.lua
 msgid "A to Z (by Date)"
@@ -1594,6 +1638,10 @@ msgstr ""
 msgid "The downloaded file does not look like a plugin archive."
 msgstr "Сваленият файл не изглежда като архив на плъгин."
 
+#: syncery_ui/jump_toast.lua
+msgid "This Device"
+msgstr "Това У-во"
+
 #: syncery_ui/menu/per_book_section.lua
 msgid "This book is marked with different reading statuses on different devices. Tap to choose which one to keep on all of them."
 msgstr "Тази книга е маркирана с различни статуси на четене на различни устройства. Докоснете, за да изберете кой да запазите на всички."
@@ -2098,7 +2146,7 @@ msgstr "няма бекенд"
 
 #: syncery_ui/jump_toast.lua
 msgid "page %d"
-msgstr "страница %d"
+msgstr "стр. %d"
 
 #: syncery_ui/progress_browser/init.lua
 msgid "page %s"
@@ -2191,16 +2239,6 @@ msgstr "Папка с метаданни на KOReader"
 #: syncery_ui/booklist/scan.lua
 msgid "Book "
 msgstr "Книга "
-
-#: syncery_ui/jump_toast.lua
-#, lua-format
-msgid "%s is on page %d"
-msgstr "%s е на страница %d"
-
-#: syncery_ui/jump_toast.lua
-#, lua-format
-msgid "%s is at %d%%"
-msgstr "%s е на %d%%"
 
 #: syncery_ui/jump_toast.lua
 #, lua-format
@@ -2453,14 +2491,6 @@ msgstr "синхронизира"
 #: syncery_ui/menu/transport_section.lua syncery_ui/status_panel.lua
 msgid "unsupported"
 msgstr "неподдържан"
-
-#: syncery_ui/jump_toast.lua
-msgid "you are at %d%%"
-msgstr "ти си на %d%%"
-
-#: syncery_ui/jump_toast.lua
-msgid "you are on page %d"
-msgstr "ти си на страница %d"
 
 #: syncery_migration/storage_mode.lua
 msgid "• %d in %s"
