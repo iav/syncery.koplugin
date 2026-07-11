@@ -652,6 +652,40 @@ function T.menuSyncthingAdvanced(plugin)
             end,
             apply      = function(n) Settings.set_syncthing_port(n) end,
         },
+        {
+            text_func = function()
+                return string.format(_("URL Host: %s"), Settings.get_syncthing_host())
+            end,
+            help_text      = _("Default: 127.0.0.1. Change if Syncthing runs on a different host. Use an IP address or hostname."),
+            keep_menu_open = true,
+            hold_callback  = H.helpHold(_("Tap to change the Syncthing GUI host.")),
+            callback       = function()
+                local dlg
+                dlg = InputDialog:new{
+                    title       = _("Syncthing host"),
+                    description = _("Default: 127.0.0.1. Use an IP address or hostname."),
+                    input       = Settings.get_syncthing_host(),
+                    input_type  = "string",
+                    buttons = {{
+                        { text = _("Cancel"),
+                          callback = function() UIManager:close(dlg) end },
+                        { text = _("Save"), is_enter_default = true,
+                          callback = function()
+                              Settings.set_syncthing_host(dlg:getInputText())
+                              UIManager:close(dlg)
+                              UIManager:show(InfoMessage:new{
+                                  text = string.format(
+                                      _("Syncthing host set to %s."),
+                                      Settings.get_syncthing_host()),
+                                  timeout = 2,
+                              })
+                          end },
+                    }},
+                }
+                UIManager:show(dlg)
+                dlg:onShowKeyboard()
+            end,
+        },
     }
 end
 
