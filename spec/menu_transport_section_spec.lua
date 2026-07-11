@@ -377,16 +377,13 @@ do
 end
 
 
--- menuSyncthingAdvanced returns 1 row: just the Syncthing port (a
--- makeNumericSetting knob whose label reflects the current value).  The scan
--- interval knob was removed — it exposed an internal debounce (lesson #24) and
--- its name misled (it tuned Syncery's /db/scan-nudge debounce, not Syncthing's
--- own scanning, which fsWatcher handles).  The API key row and folder picker
--- live in menuSyncthingConfig.
+-- menuSyncthingAdvanced returns 2 rows: Syncthing port + URL Host.
+-- The scan interval knob was removed — it exposed an internal debounce.
+-- The API key row and folder picker live in menuSyncthingConfig.
 do
     local plugin = menu_support.make_fake_plugin{}
     local rows = T.menuSyncthingAdvanced(plugin)
-    h.assert_equal(#rows, 1, "menuSyncthingAdvanced: 1 row (port only; scan interval removed)")
+    h.assert_equal(#rows, 2, "menuSyncthingAdvanced: 2 rows (port + host)")
 
     local port_row, scan_interval_row = nil, nil
     for _, row in ipairs(rows) do
