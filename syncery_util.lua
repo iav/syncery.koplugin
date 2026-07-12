@@ -357,4 +357,57 @@ function Util.transport_label(use_syncthing, use_cloud)
     return table.concat(parts, "+")
 end
 
+--- The newest per-device reading-activity timestamp in a merged progress
+--- state.  Each progress entry's `timestamp` is refreshed ONLY when that
+--- device actually MOVED its reading position (see
+--- syncery_progress/merge.lua `upsert_local_entry`: a re-asserted position is
+--- a no-op that leaves the timestamp untouched), so the maximum across
+--- devices answers "when was this book last genuinely read, on ANY device" --
+--- which is what belongs in KOReader's "last read date" sort, as opposed to
+--- the wall-clock moment a sync happened to run.
+---
+--- @param merged_state table|nil A progress state, `{ entries = { [id]=entry } }`.
+--- @return number|nil The newest timestamp, or nil when none is usable.
+function Util.newest_read_time(merged_state)
+    -- Guard the container itself, not just `.entries`: a truthy non-table
+    -- (a number/string from a malformed sync result) would raise on the index
+    -- and abort the caller's save pcall AFTER progress was written.
+    if type(merged_state) ~= "table" then return nil end
+    local entries = merged_state.entries
+    if type(entries) ~= "table" then return nil end
+    local newest = nil
+    for _, entry in pairs(entries) do
+        local ts = type(entry) == "table" and tonumber(entry.timestamp) or nil
+        if ts and (not newest or ts > newest) then newest = ts end
+    end
+    return newest
+end
+
+--- Stamp a book file's access time (`atime`) to `ts`, preserving its
+--- modification time.  KOReader's file browser sorts "last read date" by the
+--- book file's atime, and KOReader itself sets atime=now on every OPEN
+--- (`ReadHistory:addItem` -> `lfs.touch`).  A sync -- or the document reopen a
+--- post-sync reload performs -- is not reading, so instead of letting the
+--- reopen masquerade as fresh reading we carry the genuine last-read time
+--- (see `newest_read_time`) here.  Best-effort: no-op if lfs is unavailable,
+--- the timestamp is not positive, or the file is gone.
+---
+--- @param path string  Absolute path to the book file.
+--- @param ts number    The access time to stamp (epoch seconds).
+--- @return boolean     True when the atime was written.
+function Util.stamp_read_time(path, ts)
+    if not path or type(ts) ~= "number" or ts <= 0 then return false end
+    local lfs = Util.get_lfs()
+    if not lfs then return false end
+    -- Preserve mtime: only atime carries "last read"; a bumped mtime would
+    -- corrupt the independent "date modified" sort.
+    local mtime = lfs.attributes(path, "modification")
+    if not mtime then return false end -- file gone / unreadable
+    -- lfs.touch returns true on success, nil+err on failure (read-only /
+    -- permission-denied path).  pcall swallows only the throw, so check the
+    -- touch's OWN result too -- otherwise we'd report success on a no-write.
+    local ok, res = pcall(lfs.touch, path, ts, mtime)
+    return ok and res == true
+end
+
 return Util
