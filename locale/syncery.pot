@@ -310,6 +310,10 @@ msgid "Check for plugin updates"
 msgstr ""
 
 #: syncery_transports/plugin_sync.lua
+msgid "Checking %d never-opened book(s) for new data..."
+msgstr ""
+
+#: syncery_transports/plugin_sync.lua
 msgid "Checking device %d/%d..."
 msgstr ""
 
@@ -1009,6 +1013,10 @@ msgstr ""
 
 #: syncery_ui/menu/db_sync_section.lua
 msgid "Point Statistics and Vocabulary Builder at Syncery's own cloud server, so you set the cloud up once here instead of in each plugin.  This changes those plugins' sync settings; turning it off afterwards leaves the last server in place.  Needs a WebDAV or Dropbox server (FTP cannot sync these databases)."
+msgstr ""
+
+#: syncery_transports/plugin_sync.lua
+msgid "Prefetching book %d/%d (%s)..."
 msgstr ""
 
 #: syncery_ui/annotation_viewer/viewer_lifted.lua
