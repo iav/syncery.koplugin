@@ -315,8 +315,272 @@ end
 PluginSync.pushOpenedBooks = pushOpenedBooks
 
 -- =============================================================================
+-- Cloud prefetch for remote-only books (never opened on this device).
+--
+-- See docs/CLOUD_PREFETCH_DESIGN.md for the full design and its revision
+-- history (v1-v18) -- every constraint referenced in comments below is
+-- traced there against the actual code, not assumed.
+-- =============================================================================
+
+--- Constraint X: reject any book_id containing anything outside the same
+--- safe character class Staging.cloud_name_for already enforces
+--- (cloud/staging.lua:83) -- reused deliberately, not reinvented, so the
+--- two independent parsers of "what is a legal book_id" cannot drift
+--- apart. book_id here comes from untrusted remote input (a cloud
+--- directory listing, or a peer's uploaded manifest) -- this must be the
+--- first gate applied, before the value touches any path.
+local function _isSafeBookId(book_id)
+    return type(book_id) == "string" and book_id ~= ""
+        and not book_id:match("[^%w%-_]")
+end
+
+--- Constraint Q: group a Cloud Storage+ listing's entries by book_id and
+--- kind, reusing the exact recognition pattern generateManifest already
+--- uses when walking cloud_staging/ (cloud/list.lua:47) -- applied here to
+--- the remote listing instead, not reinvented.
+---
+--- @param entries table listFolder's result -- each entry has .text (name)
+---   and .filesize (Constraint D).
+--- @return table book_id -> { progress = entry|nil, annotations = entry|nil }
+local function _groupRemoteEntries(entries)
+    local by_book = {}
+    for _, e in ipairs(entries) do
+        local kind, book_id = e.text:match("^syncery%-(%a+)%-(.+)%.json$")
+        if book_id and _isSafeBookId(book_id)
+                and (kind == "progress" or kind == "annotations") then
+            by_book[book_id] = by_book[book_id] or {}
+            by_book[book_id][kind] = e
+        end
+    end
+    return by_book
+end
+
+--- Constraint I / J: validate downloaded (or about-to-be-written) content
+--- before it is trusted, then place it at final_path via a temp-write +
+--- rename so a reader checking for the file's existence never sees a
+--- partial write. Shared by both transport paths (Constraint T's
+--- fallback callback calls this too, from Checkpoint 4) -- one validated
+--- write implementation, not two independently maintained ones.
+---
+--- @param content string raw content already read into memory
+--- @param final_path string destination path
+--- @return boolean ok, string|nil err
+local function _validateAndPlace(content, final_path)
+    if not content or content == "" then
+        return false, "content is empty"
+    end
+    local ok_json = pcall(require("rapidjson").decode, content)
+    if not ok_json then
+        return false, "content is not valid JSON"
+    end
+    local tmp_path = final_path .. ".tmp"
+    local wf = io.open(tmp_path, "wb")
+    if not wf then return false, "cannot open temp path for write" end
+    wf:write(content)
+    wf:close()
+    local ok_rename, rename_err = os.rename(tmp_path, final_path)
+    if not ok_rename then
+        os.remove(tmp_path)
+        return false, "rename to final path failed: " .. tostring(rename_err)
+    end
+    return true
+end
+
+--- Constraint I/O/P: download one kind for one book_id from the Cloud
+--- Storage+ provider into a temp path, validate, then rename into place.
+--- io.open(tmp_path, "w") inside downloadFile creates/truncates tmp_path,
+--- never final_path -- a failed/interrupted download only ever leaves
+--- garbage at tmp_path, never where a later existence check looks.
+---
+--- @return boolean ok, string|nil err
+local function _downloadAndValidate(plugin, provider, server, book_id, kind)
+    local prefetch_dir = plugin.state_dir .. "cloud_staging/prefetch/"
+    require("util").makePath(prefetch_dir)  -- Constraint P: mkdir -p, no-op if it exists
+
+    local filename   = "syncery-" .. kind .. "-" .. book_id .. ".json"
+    local remote_url = server.url .. "/" .. filename  -- Constraint O: matches
+                                                        -- the existing manifest-
+                                                        -- download convention
+    local final_path = prefetch_dir .. filename
+    local tmp_path    = final_path .. ".tmp"
+
+    local code = provider.downloadFile(remote_url, tmp_path)
+    if code ~= 200 then
+        os.remove(tmp_path)
+        return false, "download failed: " .. tostring(code)
+    end
+    local f = io.open(tmp_path, "rb")
+    if not f then return false, "cannot open downloaded temp file" end
+    local content = f:read("*a")
+    f:close()
+    os.remove(tmp_path)  -- _validateAndPlace writes its own temp file; this
+                         -- one (downloadFile's) is done being read from.
+    return _validateAndPlace(content, final_path)
+end
+
+-- =============================================================================
 -- sync_all — two-phase sync (push + Merkle-manifest pull)
 -- =============================================================================
+PluginSync._isSafeBookId       = _isSafeBookId
+PluginSync._groupRemoteEntries = _groupRemoteEntries
+PluginSync._validateAndPlace   = _validateAndPlace
+PluginSync._downloadAndValidate = _downloadAndValidate
+
+
+--- Constraint C: os.rename fails with EXDEV across filesystem boundaries
+--- (cloud_staging/ under {settings}/syncery/ -> a canonical SDR sidecar
+--- that may sit beside the book on external/SD storage, for "doc" mode).
+--- Falls back to read+write+verify+delete -- never removes the source
+--- until the destination write is confirmed byte-identical.
+---
+--- @return boolean ok, string|nil err
+local function _moveOrCopyDelete(src, dst)
+    local ok, err = os.rename(src, dst)
+    if ok then return true end
+    local rf = io.open(src, "rb")
+    if not rf then return false, "cannot open source: " .. tostring(err) end
+    local content = rf:read("*a")
+    rf:close()
+    if not content or content == "" then return false, "empty source read" end
+    local wf = io.open(dst, "wb")
+    if not wf then return false, "cannot open destination" end
+    wf:write(content)
+    wf:close()
+    local check = io.open(dst, "rb")
+    if not check then return false, "destination write did not verify" end
+    local written = check:read("*a")
+    check:close()
+    if written ~= content then return false, "destination content mismatch" end
+    os.remove(src)
+    return true
+end
+
+--- Constraint M/G/toggle-respecting: move any staged prefetch content for
+--- book_id into canonical storage, now that book_file is known (this is
+--- called from onReaderReady, where it always is). Safe because an empty
+--- local/last-sync map is documented, normal input to Merge.three_way
+--- (same reasoning as do_cloud_upload's own bootstrap-empty-envelope
+--- path) -- moving staged remote content into an empty canonical slot
+--- reaches the same safe outcome one merge cycle earlier.
+function PluginSync.apply_staged_prefetch(plugin, book_id, book_file)
+    if not _isSafeBookId(book_id) then return end  -- Constraint X, defensive
+    if not (plugin and plugin._isFileTypeSynced
+            and plugin:_isFileTypeSynced(book_file)) then
+        return
+    end
+
+    local prefetch_dir = plugin.state_dir .. "cloud_staging/prefetch/"
+    local progress_src = prefetch_dir .. "syncery-progress-" .. book_id .. ".json"
+    local annot_src     = prefetch_dir .. "syncery-annotations-" .. book_id .. ".json"
+    local progress_dst  = ProgressPaths.shared_progress_path(book_file)
+    local annot_dst      = AnnPaths.shared_annotations_path(book_file)
+    local lfs = Util.get_lfs()
+    if not lfs then return end
+
+    -- Constraint M: shared_progress_path/shared_annotations_path can
+    -- return nil -- guard explicitly before ever handing a possibly-nil
+    -- value to lfs.attributes.
+    if plugin.sync_progress and progress_dst
+            and not lfs.attributes(progress_dst)
+            and lfs.attributes(progress_src) then
+        local ok, err = _moveOrCopyDelete(progress_src, progress_dst)
+        if not ok then
+            logger.warn("Syncery: staged progress apply failed:", err)
+        end
+    end
+    if (plugin.sync_annotations or plugin.sync_metadata or plugin.sync_render_settings)
+            and annot_dst
+            and not lfs.attributes(annot_dst)
+            and lfs.attributes(annot_src) then
+        local ok, err = _moveOrCopyDelete(annot_src, annot_dst)
+        if not ok then
+            logger.warn("Syncery: staged annotations apply failed:", err)
+        end
+    end
+end
+
+
+PluginSync._moveOrCopyDelete = _moveOrCopyDelete
+
+
+--- UI visibility helpers (docs/CLOUD_PREFETCH_DESIGN.md, section 4.4).
+--- Shared enumerator across Booklist/Progress Browser/Annotation Browser --
+--- one enumeration + one title-extraction implementation, not three.
+
+--- Enumerate cloud_staging/prefetch/, grouping by book_id, same recognition
+--- and safety-gate pattern as _groupRemoteEntries (Constraint X applied
+--- again here -- a future writer into this folder is not assumed to
+--- always remember the gate).
+---@return table book_id -> { progress = path|nil, annotations = path|nil }
+function PluginSync.enumerate_prefetch_staging(plugin)
+    local prefetch_dir = plugin.state_dir .. "cloud_staging/prefetch/"
+    local lfs = Util.get_lfs()
+    local by_book = {}
+    if not (lfs and lfs.attributes(prefetch_dir, "mode") == "directory") then
+        return by_book
+    end
+    for f in lfs.dir(prefetch_dir) do
+        local kind, book_id = f:match("^syncery%-(%a+)%-(.+)%.json$")
+        if book_id and _isSafeBookId(book_id)
+                and (kind == "progress" or kind == "annotations") then
+            by_book[book_id] = by_book[book_id] or {}
+            by_book[book_id][kind] = prefetch_dir .. f
+        end
+    end
+    return by_book
+end
+
+--- Extract a display title from a staged progress.json's first `"file"`
+--- value's basename, extension stripped. Pattern match on raw text, not a
+--- full JSON decode -- only one field is needed, and this may run once per
+--- staged book per browser open. Read-only: never writes anything back,
+--- so it cannot affect any hash the way an embedded-in-payload title hint
+--- would (that alternative was considered and rejected -- see the design
+--- doc). Returns nil (never raises) when there is nothing usable.
+function PluginSync.extract_title_hint(progress_path)
+    if not progress_path then return nil end
+    local f = io.open(progress_path, "rb")
+    if not f then return nil end
+    local content = f:read("*a")
+    f:close()
+    if not content then return nil end
+    local path = content:match('"file"%s*:%s*"([^"]+)"')
+    if not path then return nil end
+    local base = path:match("([^/\\]+)$") or path
+    return (base:gsub("%.%w+$", ""))
+end
+
+
+--- Constraints S/T (design), corrected during implementation: reuses the
+--- EXISTING unified dispatch (cloud/transport.lua's cloud_sync, reached
+--- via orch:pull_book) with two new kind values
+--- ("prefetch_progress"/"prefetch_annotations"), the exact same pattern
+--- the existing "manifest" kind already demonstrates -- NOT a
+--- hand-rolled SyncServiceAdapter construction, which the design's
+--- earlier revisions assumed was necessary before this implementation
+--- found otherwise. Bootstraps an empty envelope as the "local" side
+--- (same safety reasoning as do_cloud_upload's own fresh-open-pull
+--- bootstrap: an empty local map is documented, normal input to
+--- Merge.three_way) -- the merge callback (registered in transport.lua)
+--- reads the real downloaded content from income_file and places it into
+--- cloud_staging/prefetch/ via the shared _validateAndPlace.
+local function _prefetchViaFallback(plugin, orch, book_id, kind)
+    local content = (kind == "progress")
+        and ProgressStateStore.empty_envelope_json()
+        or StateStore.empty_envelope_json()
+    local pull_kind = (kind == "progress") and "prefetch_progress" or "prefetch_annotations"
+    orch:pull_book("__prefetch__", {
+        payload = { kind = pull_kind, book_id = book_id, content = content },
+    }, function(results)
+        -- Fire-and-forget from this call's point of view -- errors are
+        -- already logged inside the merge callback / cloud_sync itself;
+        -- nothing further to reconcile here (unlike the manifest case,
+        -- there is no local file for this caller to read back).
+    end)
+end
+PluginSync._prefetchViaFallback = _prefetchViaFallback
+
+
 function PluginSync.sync_all(plugin, opts)
     opts = opts or {}
     if plugin._sync_all_in_progress then
@@ -566,6 +830,35 @@ function PluginSync.sync_all(plugin, opts)
                                 if my_hash and my_hash ~= remote_hash then
                                     local path = listM.resolveBookPath(plugin, book_id)
                                     if path then table.insert(changed, {id = book_id, path = path}) end
+                                elseif not my_hash and _isSafeBookId(book_id) then
+                                    -- Cloud prefetch, fallback path (Constraint R):
+                                    -- never known locally -- compare the LOCAL
+                                    -- combined hash of whatever is already
+                                    -- staged in cloud_staging/prefetch/ (empty
+                                    -- string for each half never yet fetched)
+                                    -- against the peer's single combined hash.
+                                    -- No finer signal is available here than
+                                    -- per-book (unlike Cloud Storage+'s
+                                    -- per-kind size check) -- a change to
+                                    -- either kind re-fetches both.
+                                    local prefetch_dir = plugin.state_dir .. "cloud_staging/prefetch/"
+                                    local function read_or_empty(path2)
+                                        local fh = io.open(path2, "rb")
+                                        if not fh then return "" end
+                                        local c = fh:read("*a"); fh:close()
+                                        return c or ""
+                                    end
+                                    local staged_progress = read_or_empty(
+                                        prefetch_dir .. "syncery-progress-" .. book_id .. ".json")
+                                    local staged_annotations = read_or_empty(
+                                        prefetch_dir .. "syncery-annotations-" .. book_id .. ".json")
+                                    local local_ctx = sha2.md5()
+                                    local_ctx(staged_progress .. "\0" .. staged_annotations)
+                                    local local_hash_combined = local_ctx()
+                                    if local_hash_combined ~= remote_hash then
+                                        _prefetchViaFallback(plugin, orch, book_id, "progress")
+                                        _prefetchViaFallback(plugin, orch, book_id, "annotations")
+                                    end
                                 end
                             end
                         end
@@ -662,6 +955,47 @@ function PluginSync.sync_all(plugin, opts)
             local ok_list, entries = pcall(provider.listFolder, server.url, true)
             if not ok_list or not entries then
                 return
+            end
+
+            -- 2b-prefetch. Remote-only books (never opened on this device) --
+            -- see docs/CLOUD_PREFETCH_DESIGN.md. Reuses THIS SAME `entries`
+            -- listing (Constraint O/Q) -- no second network round-trip.
+            -- Constraint V: staged under prefetch/, never the flat top
+            -- level, so generateManifest's walk (2a, above) never sees
+            -- these and its per-sync_all cost stays independent of
+            -- prefetch volume.
+            do
+                local by_book = _groupRemoteEntries(entries)
+                for book_id, kinds in pairs(by_book) do
+                    -- Constraint K: my_manifest was generated AFTER push
+                    -- (2a runs after pushOpenedBooks), so a book opened
+                    -- moments before this Sync Now is already reflected
+                    -- here and correctly skipped, not double-classified.
+                    if not (my_manifest and my_manifest.files
+                            and my_manifest.files[book_id]) then
+                        for kind, entry in pairs(kinds) do
+                            local staging_path = plugin.state_dir
+                                .. "cloud_staging/prefetch/syncery-" .. kind
+                                .. "-" .. book_id .. ".json"
+                            local staged_size = (function()
+                                local lfs = Util.get_lfs()
+                                return lfs and lfs.attributes(staging_path, "size")
+                            end)()
+                            -- Constraint N: nil-safe comparison -- either
+                            -- side may be nil (never staged yet, or the
+                            -- listing entry lacks a size for some reason).
+                            if (not staged_size)
+                                    or (staged_size and staged_size ~= entry.filesize) then
+                                local ok_dl, err_dl = _downloadAndValidate(
+                                    plugin, provider, server, book_id, kind)
+                                if not ok_dl then
+                                    logger.warn("Syncery: prefetch download failed for",
+                                        book_id, kind, err_dl)
+                                end
+                            end
+                        end
+                    end
+                end
             end
 
             -- 2c/2d. Collect all peer manifests from the listing
