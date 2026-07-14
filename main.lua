@@ -1380,6 +1380,18 @@ function Syncery:onReaderReady()
 
         local state = self:getCurrentState()
         if state then
+            -- Cloud prefetch apply (docs/CLOUD_PREFETCH_DESIGN.md): move any
+            -- staged remote-only content into canonical storage now that
+            -- book_file is known. Read the already-computed
+            -- partial_md5_checksum directly rather than recomputing it --
+            -- readerui.lua's own caching (:497-500) runs before ReaderReady
+            -- fires (:517), so it is already populated here, in memory,
+            -- no disk read needed.
+            local book_id = self.ui.doc_settings
+                and self.ui.doc_settings:readSetting("partial_md5_checksum")
+            if book_id and state.file then
+                PluginSync.apply_staged_prefetch(self, book_id, state.file)
+            end
             -- Surface the silent cross-device-sync trap.  If building this
             -- book's id had to fall back to a basename hash (no cached
             -- partial_md5_checksum and no live partialMD5), the id differs
@@ -2220,11 +2232,11 @@ function Syncery:_writeSave(state, now, silent, trigger)
     -- Carry the genuine last-read time onto the book file's access time, so
     -- KOReader's "last read date" sort reflects real reading -- the newest
     -- position-move across all devices -- rather than the wall-clock moment
-    -- this sync ran.  A sync is not reading; neither is the document reopen a
+    -- this sync ran. A sync is not reading; neither is the document reopen a
     -- post-sync reload performs (which KOReader would otherwise stamp as a
-    -- fresh open).  merged_state carries every device's move-timestamp, so
+    -- fresh open). merged_state carries every device's move-timestamp, so
     -- this both preserves our own last-read and pulls a peer's newer read
-    -- forward.  See Util.newest_read_time / Util.stamp_read_time.
+    -- forward. See Util.newest_read_time / Util.stamp_read_time.
     local read_ts = Util.newest_read_time(sync_result.merged_state)
     if read_ts then
         Util.stamp_read_time(state.file, read_ts)
