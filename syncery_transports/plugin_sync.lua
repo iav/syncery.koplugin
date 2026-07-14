@@ -460,10 +460,37 @@ PluginSync._listFolderShowingUnsupported = _listFolderShowingUnsupported
 --- leave dst TRUNCATED"). Delegate to it instead of maintaining a
 --- second, less battle-tested copy of the same logic.
 ---
+--- Reported on a real device: the staged
+--- source file can still be present in cloud_staging/prefetch/ AFTER a
+--- successful apply -- content correctly reached canonical storage, but
+--- the source lingered. `Util.move_file`'s own fast path
+--- (`if os.rename(src, dst) then return true end`) trusts os.rename's
+--- return value unconditionally -- on some Android FUSE/SAF-backed
+--- storage, rename can report success while not actually clearing the
+--- source directory entry. Verify explicitly rather than trust the
+--- return value: if the source is still there after a reported success,
+--- force-remove it. This is a targeted addition here, not a change to
+--- Util.move_file itself, which other callers already rely on as-is.
+---
 --- @return boolean ok, string|nil err
 local function _moveOrCopyDelete(src, dst)
-    if Util.move_file(src, dst) then return true end
-    return false, "Util.move_file failed for " .. tostring(src) .. " -> " .. tostring(dst)
+    if not Util.move_file(src, dst) then
+        return false, "Util.move_file failed for " .. tostring(src) .. " -> " .. tostring(dst)
+    end
+    local lfs = Util.get_lfs()
+    if lfs and lfs.attributes(src) then
+        -- move_file reported success, but the source is still physically
+        -- present. Confirm the destination actually landed before
+        -- force-removing the leftover source -- never delete on a
+        -- destination we have not verified exists.
+        if lfs.attributes(dst) then
+            os.remove(src)
+        else
+            return false, "move_file reported success but neither cleared "
+                .. "the source nor produced a destination: " .. tostring(src)
+        end
+    end
+    return true
 end
 
 --- Constraint M/G/toggle-respecting: move any staged prefetch content for
@@ -488,12 +515,33 @@ function PluginSync.apply_staged_prefetch(plugin, book_id, book_file)
     local lfs = Util.get_lfs()
     if not lfs then return end
 
+    -- Real-device bug:
+    -- for a book that has genuinely never been opened before, the .sdr
+    -- sidecar directory does not exist yet -- KOReader only creates it as
+    -- part of its own docsettings write, which happens later in the open
+    -- lifecycle (observed in the device log at close time, well after
+    -- onReaderReady, where this function runs). io.open does not create
+    -- parent directories, so Util.move_file's destination write fails
+    -- outright ("cannot open destination"), the whole move reports
+    -- failure, and the source correctly (if uselessly) stays in
+    -- prefetch/ -- this was never a "lingering after reported success"
+    -- case, it never succeeded at all. do_cloud_upload's own known-book
+    -- path never hits this because "known" already implies "opened
+    -- before", so the directory was always already there by the time it
+    -- writes -- this apply step is the only canonical-storage writer that
+    -- can run before that directory exists at all.
+    local function _ensure_parent_dir(path)
+        local dir = path and path:match("^(.*/)")
+        if dir then require("util").makePath(dir) end
+    end
+
     -- Constraint M: shared_progress_path/shared_annotations_path can
     -- return nil -- guard explicitly before ever handing a possibly-nil
     -- value to lfs.attributes.
     if plugin.sync_progress and progress_dst
             and not lfs.attributes(progress_dst)
             and lfs.attributes(progress_src) then
+        _ensure_parent_dir(progress_dst)
         local ok, err = _moveOrCopyDelete(progress_src, progress_dst)
         if not ok then
             logger.warn("Syncery: staged progress apply failed:", err)
@@ -503,6 +551,7 @@ function PluginSync.apply_staged_prefetch(plugin, book_id, book_file)
             and annot_dst
             and not lfs.attributes(annot_dst)
             and lfs.attributes(annot_src) then
+        _ensure_parent_dir(annot_dst)
         local ok, err = _moveOrCopyDelete(annot_src, annot_dst)
         if not ok then
             logger.warn("Syncery: staged annotations apply failed:", err)
@@ -962,13 +1011,13 @@ function PluginSync.sync_all(plugin, opts)
                 end
             end
 
---- BUGFIX:
---- WebDav.listFolder's own hasProvider filter
---- (plugins/cloudstorage.koplugin/providers/webdav.lua) silently drops any
---- entry with no registered DocumentRegistry provider unless
---- G_reader_settings "show_unsupported" is true. ".txt" (manifest files)
---- already has a registered provider, so that discovery path was never
--- (See _listFolderShowingUnsupported near the other module-level helpers.)
+                --- BUGFIX:
+                --- WebDav.listFolder's own hasProvider filter
+                --- (plugins/cloudstorage.koplugin/providers/webdav.lua) silently drops any
+                --- entry with no registered DocumentRegistry provider unless
+                --- G_reader_settings "show_unsupported" is true. ".txt" (manifest files)
+                --- already has a registered provider, so that discovery path was never
+                -- (See _listFolderShowingUnsupported near the other module-level helpers.)
 
             -- 2b. List cloud directory for all manifest files
             local ok_list, entries = _listFolderShowingUnsupported(
