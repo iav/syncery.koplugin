@@ -6,7 +6,7 @@
 #, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: Syncery 1.1.2\n"
+"Project-Id-Version: Syncery 1.2.0\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-06-01 06:59+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
@@ -339,6 +339,14 @@ msgstr ""
 
 #: syncery_ui/annotation_viewer/viewer_lifted.lua
 msgid "Clear filter"
+msgstr ""
+
+#: syncery_ui/booklist/actions.lua
+msgid "Clear this book from the prefetch cache"
+msgstr ""
+
+#: syncery_ui/booklist/actions.lua
+msgid "Cleared."
 msgstr ""
 
 #: syncery_ui/menu/transport_section.lua
@@ -1078,6 +1086,10 @@ msgid "Reload"
 msgstr ""
 
 #: syncery_ui/booklist/actions.lua
+msgid "Remove the cached, not-yet-applied data for this book? It will be re-downloaded on the next Sync Now if it is still remote-only, or applied normally if you open it before then."
+msgstr ""
+
+#: syncery_ui/booklist/actions.lua
 msgid "Remove this book from Syncery on this device"
 msgstr ""
 
@@ -1335,6 +1347,10 @@ msgstr ""
 #: syncery_ui/annotation_viewer/viewer_lifted.lua
 #: syncery_ui/progress_browser/init.lua
 msgid "Sync-conflict resolved."
+msgstr ""
+
+#: syncery_ui/booklist/init.lua
+msgid "Synced books — %d SDR, %d Synceryhash, %d Pending"
 msgstr ""
 
 #: _meta.lua main.lua
@@ -2864,7 +2880,7 @@ msgid ""
 msgstr ""
 
 #: syncery_ui/annotation_viewer/viewer_lifted.lua
-#: syncery_ui/menu/transport_section.lua
+#: syncery_ui/booklist/actions.lua syncery_ui/menu/transport_section.lua
 msgid "Clear"
 msgstr ""
 
