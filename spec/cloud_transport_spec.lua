@@ -790,3 +790,123 @@ do
     h.assert_equal(responded2, 0,
         "on_server_responded does NOT fire on dispatch alone (merge_cb never ran)")
 end
+
+
+-- ----------------------------------------------------------------------------
+-- Cloud prefetch fallback: "prefetch_progress"/"prefetch_annotations" kinds
+-- (docs/CLOUD_PREFETCH_DESIGN.md, Constraints S/T/X).
+-- ----------------------------------------------------------------------------
+
+
+do
+    -- The kind must be accepted at all (Staging.KINDS) -- a payload with
+    -- this kind must NOT be rejected the way "garbage" is.
+    local fs   = make_fake_fs()
+    local prov = make_fake_provider()
+    local t = Transport.new({
+        settings_reader = settings_for(valid_settings()),
+        select_provider = prov.selector,
+        file_writer     = fs.writer,
+        file_reader     = fs.reader,
+        ensure_dir      = fs.ensure_dir,
+        staging_dir_fn  = function() return "/data/staging" end,
+    })
+
+    local got_err
+    t.pull("/x", { payload = { kind = "prefetch_progress", book_id = "abc123",
+        content = '{"entries":{}}' } },
+        function(_ok, err) got_err = err end)
+    h.assert_nil(got_err, "prefetch_progress kind is accepted, not rejected")
+    h.assert_equal(#prov.syncs, 1, "one sync dispatched for prefetch_progress")
+end
+
+do
+    -- Malformed book_id must still be rejected for the new kinds too
+    -- (Constraint X applies uniformly, not just to progress/annotations).
+    local fs   = make_fake_fs()
+    local prov = make_fake_provider()
+    local t = Transport.new({
+        settings_reader = settings_for(valid_settings()),
+        select_provider = prov.selector,
+        file_writer     = fs.writer,
+        ensure_dir      = fs.ensure_dir,
+        staging_dir_fn  = function() return "/staging" end,
+    })
+    local got_err
+    t.pull("/x", { payload = { kind = "prefetch_progress", book_id = "../etc",
+        content = '{"entries":{}}' } },
+        function(_ok, err) got_err = err end)
+    h.assert_equal(got_err, Interface.ERRORS.REJECTED,
+        "malformed book_id rejected for prefetch_progress too")
+end
+
+do
+    -- The merge callback, when actually invoked with a real income_file,
+    -- must place its content into cloud_staging/prefetch/ via the shared
+    -- PluginSync._validateAndPlace -- verified against a REAL temp
+    -- directory (not the fake in-memory fs) since the new branch calls
+    -- io.open directly, same as _validateAndPlace's own tests do.
+    local test_dir = "/tmp/cloud_transport_prefetch_spec_" .. tostring(os.time())
+    os.execute("mkdir -p " .. test_dir)
+    local income_path = test_dir .. "/income.json"
+    local f = io.open(income_path, "wb")
+    f:write('{"entries":{"D1":{"percent":0.5}}}')
+    f:close()
+
+    local fp = make_fake_provider()
+    fp.provider.sync = function(_server, _path, merge_cb, callback)
+        local ok = merge_cb(_path, nil, income_path)
+        callback(ok and true or false)
+    end
+
+    local t = Transport.new({
+        settings_reader = settings_for(valid_settings()),
+        select_provider = fp.selector,
+        file_writer     = function() return true end,  -- bootstrap write is a no-op fake here
+        file_reader     = function() return nil end,
+        ensure_dir      = function() return true end,
+        staging_dir_fn  = function() return test_dir .. "/cloud_staging" end,
+    })
+
+    local got_ok
+    t.pull("/x", { payload = { kind = "prefetch_progress", book_id = "FEEDFEEDFEEDFEEDFEEDFEEDFEEDFEED",
+        content = '{"entries":{}}' } },
+        function(ok) got_ok = ok end)
+
+    h.assert_true(got_ok, "merge callback reports success when income_file has real content")
+    local final_path = test_dir .. "/cloud_staging/prefetch/syncery-progress-FEEDFEEDFEEDFEEDFEEDFEEDFEEDFEED.json"
+    local ff = io.open(final_path, "rb")
+    h.assert_true(ff ~= nil, "content landed in cloud_staging/prefetch/, not the flat top level")
+    if ff then
+        h.assert_equal(ff:read("*a"), '{"entries":{"D1":{"percent":0.5}}}',
+            "placed content matches income_file's real content")
+        ff:close()
+    end
+
+    os.execute("rm -rf " .. test_dir)
+end
+
+do
+    -- income_file missing or empty: merge callback must report false, not
+    -- raise, and must not create anything.
+    local fp = make_fake_provider()
+    fp.provider.sync = function(_server, _path, merge_cb, callback)
+        local ok = merge_cb(_path, nil, "/tmp/does-not-exist-" .. tostring(os.time()))
+        callback(ok and true or false)
+    end
+    local t = Transport.new({
+        settings_reader = settings_for(valid_settings()),
+        select_provider = fp.selector,
+        file_writer     = function() return true end,
+        file_reader     = function() return nil end,
+        ensure_dir      = function() return true end,
+        staging_dir_fn  = function() return "/tmp/cloud_transport_prefetch_missing" end,
+    })
+    local got_ok
+    local ok_call = pcall(t.pull, "/x", { payload = { kind = "prefetch_annotations",
+        book_id = "DEADDEADDEADDEADDEADDEADDEADDEAD", content = '{"annotations":{}}' } },
+        function(ok) got_ok = ok end)
+    h.assert_true(ok_call, "missing income_file does not raise")
+    h.assert_false(got_ok, "missing income_file reports failure")
+end
+
