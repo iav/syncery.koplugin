@@ -358,4 +358,78 @@ end
 
 os.execute("rm -rf " .. ui_dir)
 
+
+-- ── _listFolderShowingUnsupported (real-device bug: WebDav.listFolder's ──
+-- ── hasProvider filter silently drops .json entries) ─────────────────────
+
+-- Fake G_reader_settings: tracks the value across the call, and lets
+-- the test see exactly what the provider's listFolder saw at call time.
+local function make_fake_gset(initial)
+    local value = initial
+    return {
+        isTrue = function(_self, key)
+            if key == "show_unsupported" then return value == true end
+            return false
+        end,
+        saveSetting = function(_self, key, v)
+            if key == "show_unsupported" then value = v end
+        end,
+        _get = function() return value end,
+    }
+end
+
+do
+    -- Case 1: originally false -- must be true DURING the call, restored
+    -- to false after.
+    local gset = make_fake_gset(false)
+    local seen_during_call
+    local fake_provider = {
+        listFolder = function(_url, _incl)
+            seen_during_call = gset:_get()
+            return { { text = "syncery-progress-ABC.json" } }
+        end,
+    }
+    local ok, entries = PluginSync._listFolderShowingUnsupported(
+        gset, fake_provider, "https://example.invalid/dav", true)
+    h.assert_true(ok, "call succeeds")
+    h.assert_true(seen_during_call == true,
+        "show_unsupported is true DURING the listFolder call")
+    h.assert_true(gset:_get() == false,
+        "show_unsupported is restored to its original (false) value after")
+    h.assert_equal(#entries, 1, "entries are returned through unchanged")
+end
+
+do
+    -- Case 2: originally true -- must remain true after (restoring "the
+    -- original value", not unconditionally flipping back to false).
+    local gset = make_fake_gset(true)
+    local fake_provider = { listFolder = function() return {} end }
+    PluginSync._listFolderShowingUnsupported(gset, fake_provider, "https://x", true)
+    h.assert_true(gset:_get() == true,
+        "show_unsupported stays true when that was the original value")
+end
+
+do
+    -- Case 3: listFolder itself errors -- restore must still happen
+    -- (pcall-protected), not left toggled on because of the error.
+    local gset = make_fake_gset(false)
+    local fake_provider = {
+        listFolder = function() error("simulated network failure") end,
+    }
+    local ok, err = PluginSync._listFolderShowingUnsupported(
+        gset, fake_provider, "https://x", true)
+    h.assert_false(ok, "the underlying error is reported, not swallowed silently")
+    h.assert_true(gset:_get() == false,
+        "show_unsupported is still restored even when listFolder raises")
+end
+
+do
+    -- No G_reader_settings available (headless/edge case) -- must not raise.
+    local fake_provider = { listFolder = function() return { { text = "x" } } end }
+    local ok_call, ok, entries = pcall(PluginSync._listFolderShowingUnsupported,
+        nil, fake_provider, "https://x", true)
+    h.assert_true(ok_call, "a nil gset does not raise")
+    h.assert_true(ok, "the call still succeeds with a nil gset")
+end
+
 h.report("cloud_prefetch_spec")
