@@ -11,6 +11,8 @@
 local h = require("spec.test_helpers")
 h.setup()
 
+local ProgressPaths = require("syncery_progress/paths")
+
 local PluginSync = require("syncery_transports/plugin_sync")
 
 
@@ -204,6 +206,33 @@ do
     h.assert_false(ok, "missing source reported as failure, not a crash")
 end
 
+do
+    -- Real-device bug: os.rename reports success (true) but the source
+    -- is still physically present on some Android FUSE/SAF setups.
+    -- _moveOrCopyDelete must not trust the return value blindly -- verify
+    -- and force-remove the leftover once the destination is confirmed.
+    local src = mv_dir .. "/src4.json"
+    local dst = mv_dir .. "/dst4.json"
+    local f = io.open(src, "wb"); f:write('{"z":4}'); f:close()
+
+    local real_rename = os.rename
+    os.rename = function(_s, d)
+        -- Simulate the quirk: destination gets created, source does not
+        -- actually get removed, yet rename still reports success.
+        local wf = io.open(d, "wb"); wf:write('{"z":4}'); wf:close()
+        return true
+    end
+    local ok = PluginSync._moveOrCopyDelete(src, dst)
+    os.rename = real_rename
+
+    h.assert_true(ok, "the operation is still reported as overall successful")
+    h.assert_true(io.open(src) == nil,
+        "the lingering source is force-removed once the destination is verified present")
+    local df = io.open(dst, "rb")
+    h.assert_true(df ~= nil, "destination is present")
+    if df then df:close() end
+end
+
 os.execute("rm -rf " .. mv_dir)
 
 -- ── apply_staged_prefetch (Constraints M, G, toggle-respecting) ─────────────
@@ -267,6 +296,63 @@ do
     local still_staged = io.open(ap_dir .. "/cloud_staging/prefetch/syncery-progress-" .. book_id .. ".json")
     h.assert_true(still_staged ~= nil, "progress stays staged when sync_progress is false")
     if still_staged then still_staged:close() end
+end
+
+do
+    -- End-to-end happy path for apply_staged_prefetch's actual success
+    -- case (Checkpoint 2's own tests above only covered the skip/guard
+    -- conditions -- their absence is exactly how the real-device
+    -- directory-creation bug below reached a device unnoticed).
+    --
+    -- NOTE on scope: this does NOT reproduce the specific real-device
+    -- failure (missing .sdr sidecar directory) end-to-end, because this
+    -- suite's docsettings stub (spec/test_helpers/init.lua)
+    -- unconditionally mkdir-p's the sidecar directory as a side effect
+    -- of resolving the path at all (getSidecarDir) -- and
+    -- apply_staged_prefetch itself must resolve that same path (to get
+    -- progress_dst/annot_dst) before _ensure_parent_dir ever runs, so
+    -- the directory already exists by then regardless of the fix. Real
+    -- KOReader's docsettings:getSidecarDir only returns a path string
+    -- and creates nothing, which is what actually produced the
+    -- "cannot open destination" failure on device. The
+    -- _ensure_parent_dir fix itself is a direct, one-line application
+    -- of the same require("util").makePath pattern already used a few
+    -- lines above for the prefetch/ side of this same function --
+    -- confirmed correct by that precedent and the device log, not by an
+    -- automated reproduction of the missing-directory precondition,
+    -- which this harness cannot currently produce.
+    local fresh_book_id = "FEEDFACE00112233FEEDFACE00112233"
+    local fresh_book_file = ap_dir .. "/never_opened_book.epub"
+    do
+        local f = io.open(fresh_book_file, "wb"); f:write("x"); f:close()
+    end
+
+    local function stage_for(id, kind, content)
+        local path = ap_dir .. "/cloud_staging/prefetch/syncery-" .. kind .. "-" .. id .. ".json"
+        local f = io.open(path, "wb"); f:write(content); f:close()
+        return path
+    end
+    stage_for(fresh_book_id, "progress", '{"entries":{"D1":{"percent":0.3}}}')
+    stage_for(fresh_book_id, "annotations", '{"annotations":{}}')
+
+    local plugin = make_fake_plugin()
+    local ok_call = pcall(PluginSync.apply_staged_prefetch, plugin, fresh_book_id, fresh_book_file)
+    h.assert_true(ok_call, "apply does not raise on the success path")
+
+    local progress_dst = ProgressPaths.shared_progress_path(fresh_book_file)
+    h.assert_true(progress_dst ~= nil, "a canonical progress path is resolvable")
+    if progress_dst then
+        local f = io.open(progress_dst, "rb")
+        h.assert_true(f ~= nil,
+            "progress content actually landed in canonical storage")
+        if f then
+            h.assert_equal(f:read("*a"), '{"entries":{"D1":{"percent":0.3}}}',
+                "moved content matches what was staged")
+            f:close()
+        end
+    end
+    h.assert_true(io.open(ap_dir .. "/cloud_staging/prefetch/syncery-progress-" .. fresh_book_id .. ".json") == nil,
+        "the source is actually gone from prefetch/ once the move truly succeeds")
 end
 
 os.execute("rm -rf " .. ap_dir)
@@ -430,6 +516,49 @@ do
         nil, fake_provider, "https://x", true)
     h.assert_true(ok_call, "a nil gset does not raise")
     h.assert_true(ok, "the call still succeeds with a nil gset")
+end
+
+-- ── _ensure_parent_dir (real-device bug, tested in true isolation from ──
+-- ── the docsettings stub's own directory-creating side effect) ──────────
+
+do
+    local eps_dir = "/tmp/cloud_prefetch_spec_eps_" .. tostring(os.time())
+    os.execute("rm -rf " .. eps_dir)
+    -- eps_dir itself does not exist yet -- a genuinely missing multi-level
+    -- parent, matching the real device's ".sdr directory does not exist
+    -- for a never-opened book" precondition exactly, with no stub in the
+    -- way to mask it.
+    local target = eps_dir .. "/Some Book.sdr/Some Book.epub.syncery-progress.json"
+
+    PluginSync._ensure_parent_dir(target)
+
+    local lfs = require("syncery_util").get_lfs()
+    h.assert_true(lfs.attributes(eps_dir .. "/Some Book.sdr/", "mode") == "directory",
+        "the missing multi-level parent directory is created")
+
+    -- And the actual failure mode this fixes: without ensuring the
+    -- parent first, writing to target would fail outright.
+    local f = io.open(target, "wb")
+    h.assert_true(f ~= nil, "the destination is now openable for writing")
+    if f then f:write("ok"); f:close() end
+
+    os.execute("rm -rf " .. eps_dir)
+end
+
+do
+    -- nil path must not raise.
+    local ok = pcall(PluginSync._ensure_parent_dir, nil)
+    h.assert_true(ok, "nil path does not raise")
+end
+
+do
+    -- Already-existing parent: must not error, must remain a no-op in
+    -- effect (makePath's own documented "mkdir -p" semantics).
+    local eps_dir2 = "/tmp/cloud_prefetch_spec_eps2_" .. tostring(os.time())
+    os.execute("mkdir -p " .. eps_dir2)
+    local ok = pcall(PluginSync._ensure_parent_dir, eps_dir2 .. "/f.json")
+    h.assert_true(ok, "an already-existing parent directory does not raise")
+    os.execute("rm -rf " .. eps_dir2)
 end
 
 h.report("cloud_prefetch_spec")
