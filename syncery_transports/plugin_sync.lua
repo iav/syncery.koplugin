@@ -493,6 +493,32 @@ local function _moveOrCopyDelete(src, dst)
     return true
 end
 
+--- Real-device bug:
+--- for a book that has genuinely never been opened before, the .sdr
+--- sidecar directory does not exist yet -- KOReader only creates it as
+--- part of its own docsettings write, which happens later in the open
+--- lifecycle (observed in the device log at close time, well after
+--- onReaderReady, where apply_staged_prefetch runs). io.open does not
+--- create parent directories, so Util.move_file's destination write
+--- fails outright ("cannot open destination"), the whole move reports
+--- failure, and the source correctly (if uselessly) stays in prefetch/
+--- -- this was never a "lingering after a reported success" case, it
+--- never succeeded at all. do_cloud_upload's own known-book path never
+--- hits this because "known" already implies "opened before", so the
+--- directory was always already there by the time it writes --
+--- apply_staged_prefetch is the only canonical-storage writer that can
+--- run before that directory exists at all. Module-level (not a local
+--- closure inside apply_staged_prefetch) specifically so it is directly
+--- unit-testable against a real missing directory -- this suite's
+--- docsettings stub unconditionally creates the sidecar dir as a side
+--- effect of resolving the path at all, which would otherwise mask
+--- exactly this bug from any test exercised through that stub.
+local function _ensure_parent_dir(path)
+    local dir = path and path:match("^(.*/)")
+    if dir then require("util").makePath(dir) end
+end
+PluginSync._ensure_parent_dir = _ensure_parent_dir
+
 --- Constraint M/G/toggle-respecting: move any staged prefetch content for
 --- book_id into canonical storage, now that book_file is known (this is
 --- called from onReaderReady, where it always is). Safe because an empty
@@ -514,26 +540,6 @@ function PluginSync.apply_staged_prefetch(plugin, book_id, book_file)
     local annot_dst      = AnnPaths.shared_annotations_path(book_file)
     local lfs = Util.get_lfs()
     if not lfs then return end
-
-    -- Real-device bug:
-    -- for a book that has genuinely never been opened before, the .sdr
-    -- sidecar directory does not exist yet -- KOReader only creates it as
-    -- part of its own docsettings write, which happens later in the open
-    -- lifecycle (observed in the device log at close time, well after
-    -- onReaderReady, where this function runs). io.open does not create
-    -- parent directories, so Util.move_file's destination write fails
-    -- outright ("cannot open destination"), the whole move reports
-    -- failure, and the source correctly (if uselessly) stays in
-    -- prefetch/ -- this was never a "lingering after reported success"
-    -- case, it never succeeded at all. do_cloud_upload's own known-book
-    -- path never hits this because "known" already implies "opened
-    -- before", so the directory was always already there by the time it
-    -- writes -- this apply step is the only canonical-storage writer that
-    -- can run before that directory exists at all.
-    local function _ensure_parent_dir(path)
-        local dir = path and path:match("^(.*/)")
-        if dir then require("util").makePath(dir) end
-    end
 
     -- Constraint M: shared_progress_path/shared_annotations_path can
     -- return nil -- guard explicitly before ever handing a possibly-nil
