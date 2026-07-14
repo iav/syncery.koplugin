@@ -426,33 +426,44 @@ PluginSync._groupRemoteEntries = _groupRemoteEntries
 PluginSync._validateAndPlace   = _validateAndPlace
 PluginSync._downloadAndValidate = _downloadAndValidate
 
+--- BUGFIX:
+--- WebDav.listFolder's own hasProvider filter
+--- (plugins/cloudstorage.koplugin/providers/webdav.lua) silently drops any
+--- entry with no registered DocumentRegistry provider unless
+--- G_reader_settings "show_unsupported" is true. ".txt" (manifest files)
+--- already has a registered provider, so that discovery path was never
+--- affected and looked like it "just worked" -- but ".json"
+--- (progress/annotations) has none, so prefetch's own entries were
+--- silently invisible for any user who had not manually enabled this
+--- KOReader-wide setting. Borrow the setting for exactly this one call,
+--- restore immediately after (pcall-protected around the call itself, so
+--- an error inside listFolder cannot skip the restore) -- correct the one
+--- call that needs it instead of changing global behavior permanently.
+local function _listFolderShowingUnsupported(gset, provider, url, include_folders)
+    local prev = gset and gset:isTrue("show_unsupported")
+    if gset then gset:saveSetting("show_unsupported", true) end
+    local ok, entries = pcall(provider.listFolder, url, include_folders)
+    if gset then gset:saveSetting("show_unsupported", prev) end
+    return ok, entries
+end
+PluginSync._listFolderShowingUnsupported = _listFolderShowingUnsupported
 
---- Constraint C: os.rename fails with EXDEV across filesystem boundaries
---- (cloud_staging/ under {settings}/syncery/ -> a canonical SDR sidecar
---- that may sit beside the book on external/SD storage, for "doc" mode).
---- Falls back to read+write+verify+delete -- never removes the source
---- until the destination write is confirmed byte-identical.
+
+--- Constraint C, corrected after real-device testing: this used to
+--- reimplement rename-with-fallback from scratch. `Util.move_file`
+--- (syncery_util.lua:66) already exists, is already used elsewhere in
+--- this codebase for the exact same problem, and is already hardened for
+--- the specific Android FUSE/SAF quirk this design's own move step needs
+--- (rename can succeed on some cross-volume setups while a plain
+--- fallback copy silently truncates -- Util.move_file's own comment:
+--- "on an unreliable cross-volume FS... a write can return success yet
+--- leave dst TRUNCATED"). Delegate to it instead of maintaining a
+--- second, less battle-tested copy of the same logic.
 ---
 --- @return boolean ok, string|nil err
 local function _moveOrCopyDelete(src, dst)
-    local ok, err = os.rename(src, dst)
-    if ok then return true end
-    local rf = io.open(src, "rb")
-    if not rf then return false, "cannot open source: " .. tostring(err) end
-    local content = rf:read("*a")
-    rf:close()
-    if not content or content == "" then return false, "empty source read" end
-    local wf = io.open(dst, "wb")
-    if not wf then return false, "cannot open destination" end
-    wf:write(content)
-    wf:close()
-    local check = io.open(dst, "rb")
-    if not check then return false, "destination write did not verify" end
-    local written = check:read("*a")
-    check:close()
-    if written ~= content then return false, "destination content mismatch" end
-    os.remove(src)
-    return true
+    if Util.move_file(src, dst) then return true end
+    return false, "Util.move_file failed for " .. tostring(src) .. " -> " .. tostring(dst)
 end
 
 --- Constraint M/G/toggle-respecting: move any staged prefetch content for
@@ -951,8 +962,17 @@ function PluginSync.sync_all(plugin, opts)
                 end
             end
 
+--- BUGFIX:
+--- WebDav.listFolder's own hasProvider filter
+--- (plugins/cloudstorage.koplugin/providers/webdav.lua) silently drops any
+--- entry with no registered DocumentRegistry provider unless
+--- G_reader_settings "show_unsupported" is true. ".txt" (manifest files)
+--- already has a registered provider, so that discovery path was never
+-- (See _listFolderShowingUnsupported near the other module-level helpers.)
+
             -- 2b. List cloud directory for all manifest files
-            local ok_list, entries = pcall(provider.listFolder, server.url, true)
+            local ok_list, entries = _listFolderShowingUnsupported(
+                G_reader_settings, provider, server.url, true)
             if not ok_list or not entries then
                 return
             end
@@ -964,34 +984,49 @@ function PluginSync.sync_all(plugin, opts)
             -- level, so generateManifest's walk (2a, above) never sees
             -- these and its per-sync_all cost stays independent of
             -- prefetch volume.
+            --
+            -- Trapper feedback: the known-book push/pull phases above
+            -- already report progress via info_fn -- prefetch had none,
+            -- leaving the user staring at a stuck "Checking..." message
+            -- (or nothing) for however long a peer's whole library takes
+            -- to discover and download. Same info_fn, same pattern.
             do
                 local by_book = _groupRemoteEntries(entries)
+                local candidate_ids = {}
                 for book_id, kinds in pairs(by_book) do
-                    -- Constraint K: my_manifest was generated AFTER push
-                    -- (2a runs after pushOpenedBooks), so a book opened
-                    -- moments before this Sync Now is already reflected
-                    -- here and correctly skipped, not double-classified.
                     if not (my_manifest and my_manifest.files
                             and my_manifest.files[book_id]) then
-                        for kind, entry in pairs(kinds) do
-                            local staging_path = plugin.state_dir
-                                .. "cloud_staging/prefetch/syncery-" .. kind
-                                .. "-" .. book_id .. ".json"
-                            local staged_size = (function()
-                                local lfs = Util.get_lfs()
-                                return lfs and lfs.attributes(staging_path, "size")
-                            end)()
-                            -- Constraint N: nil-safe comparison -- either
-                            -- side may be nil (never staged yet, or the
-                            -- listing entry lacks a size for some reason).
-                            if (not staged_size)
-                                    or (staged_size and staged_size ~= entry.filesize) then
-                                local ok_dl, err_dl = _downloadAndValidate(
-                                    plugin, provider, server, book_id, kind)
-                                if not ok_dl then
-                                    logger.warn("Syncery: prefetch download failed for",
-                                        book_id, kind, err_dl)
-                                end
+                        table.insert(candidate_ids, book_id)
+                    end
+                end
+                if #candidate_ids > 0 then
+                    info_fn(string.format(
+                        _("Checking %d remote book(s) for offline prefetch..."),
+                        #candidate_ids))
+                end
+                for i, book_id in ipairs(candidate_ids) do
+                    local kinds = by_book[book_id]
+                    for kind, entry in pairs(kinds) do
+                        local staging_path = plugin.state_dir
+                            .. "cloud_staging/prefetch/syncery-" .. kind
+                            .. "-" .. book_id .. ".json"
+                        local staged_size = (function()
+                            local lfs = Util.get_lfs()
+                            return lfs and lfs.attributes(staging_path, "size")
+                        end)()
+                        -- Constraint N: nil-safe comparison -- either
+                        -- side may be nil (never staged yet, or the
+                        -- listing entry lacks a size for some reason).
+                        if (not staged_size)
+                                or (staged_size and staged_size ~= entry.filesize) then
+                            info_fn(string.format(
+                                _("Prefetching book %d/%d (%s)..."),
+                                i, #candidate_ids, kind))
+                            local ok_dl, err_dl = _downloadAndValidate(
+                                plugin, provider, server, book_id, kind)
+                            if not ok_dl then
+                                logger.warn("Syncery: prefetch download failed for",
+                                    book_id, kind, err_dl)
                             end
                         end
                     end
