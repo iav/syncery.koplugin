@@ -1001,7 +1001,7 @@ function PluginSync.sync_all(plugin, opts)
                 end
                 if #candidate_ids > 0 then
                     info_fn(string.format(
-                        _("Checking %d remote book(s) for offline prefetch..."),
+                        _("Checking %d never-opened book(s) for new data..."),
                         #candidate_ids))
                 end
                 for i, book_id in ipairs(candidate_ids) do
