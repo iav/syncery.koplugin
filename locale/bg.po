@@ -324,6 +324,10 @@ msgid "Check for plugin updates"
 msgstr "Провери за обновления на плъгина"
 
 #: syncery_transports/plugin_sync.lua
+msgid "Checking %d never-opened book(s) for new data..."
+msgstr "Проверка на %d никога неотваряна/и книга/и за нови данни..."
+
+#: syncery_transports/plugin_sync.lua
 msgid "Checking device %d/%d..."
 msgstr "Проверка на устройство %d/%d..."
 
@@ -1096,6 +1100,10 @@ msgstr "Налично е обновление на плъгина"
 #: syncery_ui/menu/db_sync_section.lua
 msgid "Point Statistics and Vocabulary Builder at Syncery's own cloud server, so you set the cloud up once here instead of in each plugin.  This changes those plugins' sync settings; turning it off afterwards leaves the last server in place.  Needs a WebDAV or Dropbox server (FTP cannot sync these databases)."
 msgstr "Насочва „Статистика“ и „Речник“ към собствения облачен сървър на Синери, така че настройваш облака веднъж тук вместо във всеки плъгин.  Това променя sync настройките на тези плъгини; изключването след това оставя последния сървър.  Нужен е WebDAV или Dropbox сървър (FTP не може да синхронизира тези бази данни)."
+
+#: syncery_transports/plugin_sync.lua
+msgid "Prefetching book %d/%d (%s)..."
+msgstr "Изтегляне на книга %d/%d (%s)..."
 
 #: syncery_ui/annotation_viewer/viewer_lifted.lua
 msgid "Preview Fudge: "
