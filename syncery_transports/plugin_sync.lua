@@ -64,6 +64,61 @@ end
 
 
 -- ----------------------------------------------------------------------------
+-- Content-hash push cache (Fix 4, confirmed via the two-device
+-- investigation harness's Scenario 2b): do_cloud_upload had no
+-- content-diff check at all -- a book re-added to .opened (which _save
+-- does on EVERY successful write, regardless of whether anything
+-- meaningfully changed) got its FULL current content re-read and
+-- re-pushed unconditionally, even when byte-identical to what was
+-- already successfully staged last time. Mirrors the EXISTING
+-- manifest-upload skip pattern (pl_skip_upload, cached_our_hash, further
+-- down in sync_all) -- same "hash what we're about to send, compare to
+-- last time, skip if unchanged" shape, applied here to the per-book,
+-- per-kind push instead of the whole-library manifest.
+--
+-- Deliberately as optimistic/fire-and-forget as the manifest cache it
+-- mirrors: the cache is written right after DISPATCH, not after a
+-- confirmed remote success (do_cloud_upload has no way to know that --
+-- see Fix 1 elsewhere in this design). A push that is dispatched but
+-- fails outright would leave the cache saying "already sent" for
+-- content that never actually arrived -- an accepted, explicit
+-- narrowing of scope for THIS fix; Fix 1 is what should eventually
+-- close that gap, not this cache.
+local function _push_cache_path(plugin)
+    return plugin.state_dir .. "cloud_staging/.push_content_cache"
+end
+
+local function _read_push_cache(plugin)
+    local f = io.open(_push_cache_path(plugin), "rb")
+    if not f then return {} end
+    local content = f:read("*a")
+    f:close()
+    local ok, data = pcall(require("rapidjson").decode, content)
+    if ok and type(data) == "table" then return data end
+    return {}
+end
+
+local function _write_push_cache(plugin, cache)
+    local dir = plugin.state_dir .. "cloud_staging/"
+    require("util").makePath(dir)
+    local f = io.open(_push_cache_path(plugin), "wb")
+    if f then
+        f:write(require("rapidjson").encode(cache))
+        f:close()
+    end
+end
+
+local function _content_hash(content)
+    local ctx = sha2.md5()
+    ctx(content)
+    return ctx()
+end
+PluginSync._read_push_cache  = _read_push_cache
+PluginSync._write_push_cache = _write_push_cache
+PluginSync._content_hash     = _content_hash
+
+
+-- ----------------------------------------------------------------------------
 -- do_cloud_upload — upload progress + annotations for the current book.
 -- When offline, schedules a wifi-backoff retry instead of a bare return.
 -- ----------------------------------------------------------------------------
@@ -96,14 +151,47 @@ function PluginSync.do_cloud_upload(plugin, state)
     local entries = {}
     local p_path = ProgressPaths.shared_progress_path(state.file)
     local a_path = AnnPaths.shared_annotations_path(state.file)
+    -- Fix 4's hash-skip-cache must ONLY apply when THIS call's own
+    -- reason for existing is "local content might have changed" (Phase
+    -- 1, pushOpenedBooks -- state.force_sync is unset/false there). It
+    -- must NEVER apply when the caller is sync_changed (Phase 2): that
+    -- call exists BECAUSE the manifest comparison already found this
+    -- book_id's hash differs from the peer's -- the whole point of
+    -- calling do_cloud_upload there is to run the bidirectional merge
+    -- and PULL the peer's side in, regardless of whether OUR OWN local
+    -- content has changed since our last push. Skip-caching that call
+    -- would silently skip the pull too, since push and pull are the
+    -- SAME operation here -- confirmed via the two-device investigation
+    -- harness: an EARLIER attempt to fix this cache's other gap (the
+    -- bidirectional merge re-encoding canonical with non-deterministic
+    -- key ordering, so a raw hash rarely matches across calls anyway)
+    -- caused real, silent DATA LOSS in exactly this path (a device's
+    -- own round-trip sync stopped pulling a peer's contribution) --
+    -- reverted immediately. state.force_sync = true is how
+    -- sync_changed's call site (below) opts out of this cache entirely.
+    local use_skip_cache = not state.force_sync
+    local push_cache = use_skip_cache and _read_push_cache(plugin) or {}
+    local book_cache = push_cache[state.file] or {}
+    local cache_dirty = false
+    local pushed_progress, pushed_annotations = false, false
 
-    if p_path then
+    -- BUGFIX: the
+    -- toggle checks below used to apply ONLY to the bootstrap-empty-
+    -- envelope branch -- if p_path/a_path already had REAL content on
+    -- disk (e.g. from before the user turned a toggle off, or from
+    -- another source entirely), it was read and pushed unconditionally,
+    -- completely ignoring the toggle. Gate entry construction on the
+    -- toggle FIRST, so turning a toggle off genuinely stops that kind
+    -- from ever being pushed, not just stops NEW bootstrap content from
+    -- being manufactured.
+    if p_path and plugin.sync_progress then
         local content
         local f = io.open(p_path, "rb")
         if f then
             content = f:read("*a")
             f:close()
         end
+        local is_real_content = content and content ~= ""
         -- Bootstrap a fresh-device PULL of the peer's reading position, exactly
         -- like the annotations path below.  With no local progress file the
         -- bidirectional cloud sync would skip progress entirely (push and pull
@@ -114,48 +202,121 @@ function PluginSync.do_cloud_upload(plugin, state)
         -- late for the open-moment jump (the annotations path already pulls at
         -- open, so the reader sees fresh notes but a stale position).  Stage a
         -- canonical EMPTY envelope (our no-opinion side of the per-device
-        -- merge) when progress sync is on; the merge pulls the remote position
-        -- in and on_reconciled drives checkRemote.  Safe: progress entries
-        -- carry no tombstones, so an empty local side yields the remote entries
-        -- with no deletions.
-        if (not content or content == "") and plugin.sync_progress then
+        -- merge); the merge pulls the remote position in and on_reconciled
+        -- drives checkRemote.  Safe: progress entries carry no tombstones, so
+        -- an empty local side yields the remote entries with no deletions.
+        if not is_real_content then
             content = ProgressStateStore.empty_envelope_json()
         end
         if content and content ~= "" then
-            table.insert(entries, { kind = "progress", content = content })
+            -- Fix 4's hash-skip applies ONLY to real, existing disk content,
+            -- and ONLY when use_skip_cache allows it (see the comment on
+            -- use_skip_cache above -- sync_changed's call must always
+            -- reach the transport, never skip based on our own hash).
+            -- The bootstrap-empty envelope is IDENTICAL every time by
+            -- construction (it carries no data of its own, only triggers a
+            -- pull) -- caching against ITS hash would mean a book that has
+            -- never had real progress here only ever gets its one pull
+            -- attempt, with every later Sync Now wrongly skipped as
+            -- "unchanged", even though the whole POINT is to keep asking
+            -- for whatever the peer might now have.
+            if is_real_content and use_skip_cache
+                    and book_cache.progress_hash == _content_hash(content) then
+                -- unchanged since the last successfully cached push: skip
+            else
+                table.insert(entries, { kind = "progress", content = content })
+                pushed_progress = is_real_content and use_skip_cache
+            end
         end
     end
-    if a_path then
+    if a_path and (plugin.sync_annotations or plugin.sync_metadata
+            or plugin.sync_render_settings) then
         local content
         local f = io.open(a_path, "rb")
         if f then
             content = f:read("*a")
             f:close()
         end
+        local is_real_content = content and content ~= ""
         -- Bootstrap a fresh-device PULL.  With no local annotations file the
         -- bidirectional cloud sync would skip this kind entirely (push and pull
         -- are one op; both need staged content), so a device that never
         -- annotated this book would never DOWNLOAD a peer's annotations.  Stage
         -- a canonical EMPTY envelope (this device's no-opinion side of the
-        -- 3-way merge) when the annotation/metadata/render master is on; the
-        -- merge callback pulls the remote in and reconciles it into the
-        -- canonical file (then on_reconciled fires the Reload toast).  Safe:
-        -- absent canonical => never synced => the .sync ancestor is also empty
-        -- => the merge yields the remote with NO deletions.  Cloud-only:
-        -- Syncthing replicates the shared file at FS level.
-        if (not content or content == "")
-                and (plugin.sync_annotations or plugin.sync_metadata
-                     or plugin.sync_render_settings) then
+        -- 3-way merge); the merge callback pulls the remote in and reconciles
+        -- it into the canonical file (then on_reconciled fires the Reload
+        -- toast).  Safe: absent canonical => never synced => the .sync
+        -- ancestor is also empty => the merge yields the remote with NO
+        -- deletions.  Cloud-only: Syncthing replicates the shared file at FS
+        -- level.
+        if not is_real_content then
             content = StateStore.empty_envelope_json()
         end
         if content and content ~= "" then
-            table.insert(entries, { kind = "annotations", content = content })
+            -- Same reasoning as the progress side above: only skip-cache
+            -- real, existing content when use_skip_cache allows it --
+            -- never the bootstrap-empty envelope, never sync_changed's call.
+            if is_real_content and use_skip_cache
+                    and book_cache.annotations_hash == _content_hash(content) then
+                -- unchanged since the last successfully cached push: skip
+            else
+                table.insert(entries, { kind = "annotations", content = content })
+                pushed_annotations = is_real_content and use_skip_cache
+            end
         end
     end
     if #entries == 0 then return end
 
     plugin._transport:push_cloud_files(state.file, entries,
         plugin.ui and plugin.ui.doc_settings)
+
+    -- Cache the POST-dispatch content, not what was read before it, and
+    -- ONLY when use_skip_cache is true (sync_changed's calls must never
+    -- touch this cache at all -- push_cache was forced to {} for them
+    -- above, so writing it back here would silently WIPE every OTHER
+    -- book's cached entry). do_cloud_upload's push is bidirectional
+    -- (Constraint: the SAME cloud_sync call both pushes AND merges a
+    -- peer's income back in via the merge callback, which decodes/
+    -- reconciles/re-encodes and WRITES the result back to canonical) --
+    -- confirmed via the two-device investigation harness: even a
+    -- semantically no-op merge (nothing new from the peer) can
+    -- re-serialize canonical with different LUA TABLE KEY ORDERING than
+    -- what was on disk before dispatch, since the merge decodes into a
+    -- fresh table (pairs() iteration order is not guaranteed stable
+    -- across separate table instances with the same keys). Caching the
+    -- PRE-dispatch hash therefore almost never matched what was actually
+    -- on disk for the NEXT call to compare against. Re-reading here,
+    -- after push_cloud_files returns (confirmed synchronous for Cloud
+    -- Storage+ -- see the reachability comment above), captures the
+    -- actual steady-state bytes this SAME device will see next time.
+    if use_skip_cache then
+        if pushed_progress and p_path then
+            local f = io.open(p_path, "rb")
+            if f then
+                local post_content = f:read("*a")
+                f:close()
+                if post_content and post_content ~= "" then
+                    book_cache.progress_hash = _content_hash(post_content)
+                    cache_dirty = true
+                end
+            end
+        end
+        if pushed_annotations and a_path then
+            local f = io.open(a_path, "rb")
+            if f then
+                local post_content = f:read("*a")
+                f:close()
+                if post_content and post_content ~= "" then
+                    book_cache.annotations_hash = _content_hash(post_content)
+                    cache_dirty = true
+                end
+            end
+        end
+        if cache_dirty then
+            push_cache[state.file] = book_cache
+            _write_push_cache(plugin, push_cache)
+        end
+    end
 
     -- Record the dispatch time for the upload-debounce window.  Sync
     -- status itself is owned by the orchestrator and read via
@@ -171,17 +332,61 @@ end
 -- pushOpenedBooks -- upload books tracked in the .opened worklist.
 -- Read — dedupe — push each unique book — delete (or keep failed retry).
 -- ----------------------------------------------------------------------------
+--- Fix 1: do_cloud_upload dispatches the
+--- push and returns "dispatched" immediately -- it has no way to know
+--- whether the underlying push actually reached the server or failed
+--- mid-flight (a genuine network error, not the upfront-unreachable case
+--- "deferred" already covers). pushOpenedBooks used to treat
+--- "dispatched" as success unconditionally, clearing the book from
+--- .opened even when the push had genuinely failed -- with no retry
+--- queued anywhere the user's next manual Sync Now would reach (the
+--- Orchestrator's OWN internal backoff DOES still retry it, but only if
+--- the app stays running long enough for that in-memory timer to fire;
+--- closing/suspending KOReader loses it, since nothing re-queues .opened
+--- once it thinks the book already succeeded).
+---
+--- Fix: read the Orchestrator's ALREADY-MAINTAINED per-book state via
+--- Bridge:peek_transport_books (a pre-existing, read-only introspection
+--- API -- see orchestrator.lua's _state_for/_on_push_result, which
+--- already track last_success_at/consecutive_failures for every push
+--- attempt, on every transport, entirely independent of any of this).
+--- Snapshot "cloud" transport's consecutive_failures for this book_file
+--- immediately BEFORE dispatching, and again immediately after; if it
+--- increased, the attempt that JUST happened failed, regardless of
+--- do_cloud_upload's "dispatched" return. No changes needed anywhere in
+--- Orchestrator/Bridge/Transport's actual push logic, and no dependency
+--- on whether a given provider's push is synchronous or not: if the
+--- state has not been updated yet by the time this checks (a genuinely
+--- async provider), the increase simply is not observed here and this
+--- falls back to the EXISTING behavior (treated as succeeded) -- a
+--- strict improvement over always-succeeds, never a regression from it.
+local function _cloud_consecutive_failures_for(plugin, book_file)
+    if not (plugin._transport and plugin._transport.peek_transport_books) then
+        return nil
+    end
+    local ok, entries = pcall(plugin._transport.peek_transport_books,
+        plugin._transport, "cloud")
+    if not ok or type(entries) ~= "table" then return nil end
+    for _, e in ipairs(entries) do
+        if e.book_file == book_file and e.state then
+            return e.state.consecutive_failures or 0
+        end
+    end
+    return 0  -- no entry yet for this book on this transport: no failures recorded
+end
+
+
 local function pushOpenedBooks(plugin, info_fn, only_book)
     local path = plugin.state_dir .. ".opened"
     local f = io.open(path, "rb")
-    if not f then return end
+    if not f then return {} end
     local opened = {}
     for line in f:lines() do
         local book = line:gsub("%s+$", "")
         if book ~= "" then opened[book] = true end
     end
     f:close()
-    if not next(opened) then return end
+    if not next(opened) then return {} end
 
     -- Bounded, single-book mode: teardown.lua's Step 3 passes only_book
     -- (the book being closed) instead of flushing the whole worklist --
@@ -191,7 +396,7 @@ local function pushOpenedBooks(plugin, info_fn, only_book)
     -- were left opened earlier in the session. Those stay queued for
     -- the next full flush (interactive Sync Now, which DOES have a
     -- Trapper dialog). Not present in the worklist -> nothing to do.
-    if only_book and not opened[only_book] then return end
+    if only_book and not opened[only_book] then return {} end
 
     -- If cloud is unreachable, schedule one retry of ALL books via
     -- backoff instead of individually deferring each (which would
@@ -201,7 +406,7 @@ local function pushOpenedBooks(plugin, info_fn, only_book)
             label = "pushOpenedBooks retry",
             run   = function() pushOpenedBooks(plugin, info_fn, only_book) end,
         }
-        return
+        return {}
     end
 
     -- Deterministic order: needed for the i/total progress numbering
@@ -233,6 +438,7 @@ local function pushOpenedBooks(plugin, info_fn, only_book)
     -- plugin.destroyed is still false at that point anyway (it's set
     -- in the SAME synchronous flush, in the step after this one).
     local failed = {}
+    local succeeded = {}
     local stopped_at
     for i, book in ipairs(books) do
         if info_fn then
@@ -245,9 +451,15 @@ local function pushOpenedBooks(plugin, info_fn, only_book)
                 break
             end
         end
+        local failures_before = _cloud_consecutive_failures_for(plugin, book)
         local ok, status = pcall(PluginSync.do_cloud_upload, plugin, { file = book })
-        if not ok or status == "deferred" then
+        local failures_after = _cloud_consecutive_failures_for(plugin, book)
+        local push_actually_failed = failures_before and failures_after
+            and failures_after > failures_before
+        if not ok or status == "deferred" or push_actually_failed then
             table.insert(failed, book)
+        else
+            table.insert(succeeded, book)
         end
     end
     if stopped_at then
@@ -310,6 +522,7 @@ local function pushOpenedBooks(plugin, info_fn, only_book)
         local fw = io.open(path, "wb")
         if fw then fw:close() end
     end
+    return succeeded
 end
 
 PluginSync.pushOpenedBooks = pushOpenedBooks
@@ -705,8 +918,32 @@ function PluginSync.sync_all(plugin, opts)
             local body_ok, body_err = pcall(function()
 
             -- Phase 1: Push
-            pushOpenedBooks(plugin, info_fn)
+            local just_pushed_files = pushOpenedBooks(plugin, info_fn)
             if plugin.destroyed then return end
+
+            -- Fix 2: a book
+            -- successfully pushed in Phase 1 gets a FRESH combined hash
+            -- in the manifest Phase 2 generates moments later -- which
+            -- now, correctly but redundantly, differs from whatever the
+            -- peer's manifest still shows (since WE just changed it),
+            -- so Phase 2's own "changed" comparison below would
+            -- re-trigger a SECOND full push+pull for the exact same
+            -- book, in the SAME Sync Now, for content that is already
+            -- fully synced. Derive each just-pushed file's book_id the
+            -- SAME way the transport already does internally (reusing
+            -- doc_id_fn rather than re-deriving it a second, possibly
+            -- inconsistent way), and exclude those book_ids from Phase
+            -- 2's changed-detection loop below.
+            local just_pushed_book_ids = {}
+            if plugin._transport and plugin._transport._doc_id_fn then
+                for _, book_file in ipairs(just_pushed_files or {}) do
+                    local ok_id, book_id = pcall(plugin._transport._doc_id_fn,
+                        book_file, plugin.ui and plugin.ui.doc_settings)
+                    if ok_id and book_id then
+                        just_pushed_book_ids[book_id] = true
+                    end
+                end
+            end
 
             -- Phase 2: Pull via Merkle manifest
             local Settings = require("syncery_settings")
@@ -893,7 +1130,13 @@ function PluginSync.sync_all(plugin, opts)
                             for _, book_id in ipairs(remote_book_ids) do
                                 local remote_hash = remote_manifest.files[book_id]
                                 local my_hash = my_manifest.files[book_id]
-                                if my_hash and my_hash ~= remote_hash then
+                                if just_pushed_book_ids[book_id] then
+                                    -- Fix 2: already fully synced moments ago in
+                                    -- Phase 1 of THIS SAME Sync Now -- our hash
+                                    -- differing from the peer's stale copy here
+                                    -- is the EXPECTED, already-handled result of
+                                    -- that push, not a new change to process again.
+                                elseif my_hash and my_hash ~= remote_hash then
                                     local path = listM.resolveBookPath(plugin, book_id)
                                     if path then table.insert(changed, {id = book_id, path = path}) end
                                 elseif not my_hash and _isSafeBookId(book_id) then
@@ -947,7 +1190,7 @@ function PluginSync.sync_all(plugin, opts)
                             if not info_fn(string.format(_("Downloading %d/%d..."), i, #changed_books)) then
                                 break
                             end
-                            local ok, result = pcall(PluginSync.do_cloud_upload, plugin, { file = book.path })
+                            local ok, result = pcall(PluginSync.do_cloud_upload, plugin, { file = book.path, force_sync = true })
                             if result == "deferred" then return end
                         end
                     end
@@ -1160,7 +1403,10 @@ function PluginSync.sync_all(plugin, opts)
                         for _, book_id in ipairs(remote_book_ids) do
                             local remote_hash = remote.files[book_id]
                             local my_hash = my_manifest.files[book_id]
-                            if my_hash and my_hash ~= remote_hash then
+                            if just_pushed_book_ids[book_id] then
+                                -- Fix 2: already fully synced moments ago in
+                                -- Phase 1 of THIS SAME Sync Now.
+                            elseif my_hash and my_hash ~= remote_hash then
                                 local path = listM.resolveBookPath(plugin, book_id)
                                 if path then
                                     table.insert(changed, {id = book_id, path = path})
@@ -1179,7 +1425,7 @@ function PluginSync.sync_all(plugin, opts)
                     if not info_fn(string.format(_("Downloading %d/%d..."), i, total)) then
                         break
                     end
-                    local ok, result = pcall(PluginSync.do_cloud_upload, plugin, { file = book.path })
+                    local ok, result = pcall(PluginSync.do_cloud_upload, plugin, { file = book.path, force_sync = true })
                     if result == "deferred" then return end
                 end
             end
