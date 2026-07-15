@@ -530,9 +530,6 @@ PluginSync.pushOpenedBooks = pushOpenedBooks
 -- =============================================================================
 -- Cloud prefetch for remote-only books (never opened on this device).
 --
--- See docs/CLOUD_PREFETCH_DESIGN.md for the full design and its revision
--- history (v1-v18) -- every constraint referenced in comments below is
--- traced there against the actual code, not assumed.
 -- =============================================================================
 
 --- Constraint X: reject any book_id containing anything outside the same
@@ -740,10 +737,10 @@ PluginSync._ensure_parent_dir = _ensure_parent_dir
 --- path) -- moving staged remote content into an empty canonical slot
 --- reaches the same safe outcome one merge cycle earlier.
 function PluginSync.apply_staged_prefetch(plugin, book_id, book_file)
-    if not _isSafeBookId(book_id) then return end  -- Constraint X, defensive
+    if not _isSafeBookId(book_id) then return false end  -- Constraint X, defensive
     if not (plugin and plugin._isFileTypeSynced
             and plugin:_isFileTypeSynced(book_file)) then
-        return
+        return false
     end
 
     local prefetch_dir = plugin.state_dir .. "cloud_staging/prefetch/"
@@ -752,7 +749,7 @@ function PluginSync.apply_staged_prefetch(plugin, book_id, book_file)
     local progress_dst  = ProgressPaths.shared_progress_path(book_file)
     local annot_dst      = AnnPaths.shared_annotations_path(book_file)
     local lfs = Util.get_lfs()
-    if not lfs then return end
+    if not lfs then return false end
 
     local applied_progress, applied_annotations = false, false
 
@@ -824,13 +821,27 @@ function PluginSync.apply_staged_prefetch(plugin, book_id, book_file)
             if out then out:write(content); out:close() end
         end
     end
+
+    -- Return value used by main.lua's scheduled open-moment pull
+    --: if THIS call just
+    -- consumed genuinely fresh prefetch data, the caller can safely
+    -- skip its own subsequent do_cloud_upload dispatch entirely --
+    -- there is nothing left to push (we did not create this content,
+    -- we just received it) and nothing left to pull (we just got the
+    -- latest available copy from the same source do_cloud_upload would
+    -- have queried). See main.lua's own comment at the call site for
+    -- the full reasoning, including why skipping there does not lose
+    -- the jump-prompt behavior (checkRemote is independently scheduled
+    -- regardless) or need a "Reload" toast (nothing has been rendered
+    -- yet at this point in a fresh book open).
+    return applied_progress or applied_annotations
 end
 
 
 PluginSync._moveOrCopyDelete = _moveOrCopyDelete
 
 
---- UI visibility helpers (docs/CLOUD_PREFETCH_DESIGN.md, section 4.4).
+--- UI visibility helpers.
 --- Shared enumerator across Booklist/Progress Browser/Annotation Browser --
 --- one enumeration + one title-extraction implementation, not three.
 
@@ -1323,8 +1334,8 @@ function PluginSync.sync_all(plugin, opts)
                 return
             end
 
-            -- 2b-prefetch. Remote-only books (never opened on this device) --
-            -- see docs/CLOUD_PREFETCH_DESIGN.md. Reuses THIS SAME `entries`
+            -- 2b-prefetch. Remote-only books (never opened on this device) 
+            -- Reuses THIS SAME `entries`
             -- listing (Constraint O/Q) -- no second network round-trip.
             -- Constraint V: staged under prefetch/, never the flat top
             -- level, so generateManifest's walk (2a, above) never sees
