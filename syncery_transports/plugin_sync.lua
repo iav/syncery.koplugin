@@ -754,6 +754,8 @@ function PluginSync.apply_staged_prefetch(plugin, book_id, book_file)
     local lfs = Util.get_lfs()
     if not lfs then return end
 
+    local applied_progress, applied_annotations = false, false
+
     -- Constraint M: shared_progress_path/shared_annotations_path can
     -- return nil -- guard explicitly before ever handing a possibly-nil
     -- value to lfs.attributes.
@@ -764,6 +766,8 @@ function PluginSync.apply_staged_prefetch(plugin, book_id, book_file)
         local ok, err = _moveOrCopyDelete(progress_src, progress_dst)
         if not ok then
             logger.warn("Syncery: staged progress apply failed:", err)
+        else
+            applied_progress = true
         end
     end
     if (plugin.sync_annotations or plugin.sync_metadata or plugin.sync_render_settings)
@@ -774,6 +778,50 @@ function PluginSync.apply_staged_prefetch(plugin, book_id, book_file)
         local ok, err = _moveOrCopyDelete(annot_src, annot_dst)
         if not ok then
             logger.warn("Syncery: staged annotations apply failed:", err)
+        else
+            applied_annotations = true
+        end
+    end
+
+    -- BUGFIX (confirmed empirically via the two-device investigation
+    -- harness): without this, generateManifest's NEXT scan (which reads
+    -- cloud_staging/ FLAT -- Constraint V keeps prefetch/ separate on
+    -- purpose) never sees this book_id, since apply only ever MOVED the
+    -- file to canonical storage, never staged anything at the flat
+    -- level the way do_cloud_upload's own push normally does. A book
+    -- that is prefetched then applied WITHOUT ever being genuinely
+    -- opened/read (so do_cloud_upload never runs for it) would
+    -- otherwise stay in the "never-opened" candidate list forever
+    -- (my_manifest.files[book_id] never gets an entry there), AND the
+    -- prefetch staleness check would ALWAYS re-download it (the staged
+    -- prefetch/ copy was just moved away, so "not staged_size" reads as
+    -- true every time) -- both firing on EVERY subsequent Sync Now,
+    -- indefinitely, for a book with zero real local activity beyond the
+    -- one apply. Staging a copy of the just-applied content at the flat
+    -- level (mirroring exactly what a real push would have left there)
+    -- fixes both at once: generateManifest now finds and hashes it, and
+    -- the prefetch candidate check correctly sees an entry and stops
+    -- treating the book as never-opened.
+    local staging_dir = plugin.state_dir .. "cloud_staging/"
+    if applied_progress or applied_annotations then
+        require("util").makePath(staging_dir)
+    end
+    if applied_progress then
+        local f = io.open(progress_dst, "rb")
+        if f then
+            local content = f:read("*a")
+            f:close()
+            local out = io.open(staging_dir .. "syncery-progress-" .. book_id .. ".json", "wb")
+            if out then out:write(content); out:close() end
+        end
+    end
+    if applied_annotations then
+        local f = io.open(annot_dst, "rb")
+        if f then
+            local content = f:read("*a")
+            f:close()
+            local out = io.open(staging_dir .. "syncery-annotations-" .. book_id .. ".json", "wb")
+            if out then out:write(content); out:close() end
         end
     end
 end
@@ -1187,7 +1235,7 @@ function PluginSync.sync_all(plugin, opts)
                         end
                         for i, book in ipairs(changed_books) do
                             if plugin.destroyed then return end
-                            if not info_fn(string.format(_("Downloading %d/%d..."), i, #changed_books)) then
+                            if not info_fn(string.format(_("Syncing %d/%d..."), i, #changed_books)) then
                                 break
                             end
                             local ok, result = pcall(PluginSync.do_cloud_upload, plugin, { file = book.path, force_sync = true })
@@ -1422,7 +1470,7 @@ function PluginSync.sync_all(plugin, opts)
             local function sync_changed(changed_books)
                 for i, book in ipairs(changed_books) do
                     if plugin.destroyed then return end
-                    if not info_fn(string.format(_("Downloading %d/%d..."), i, total)) then
+                    if not info_fn(string.format(_("Syncing %d/%d..."), i, total)) then
                         break
                     end
                     local ok, result = pcall(PluginSync.do_cloud_upload, plugin, { file = book.path, force_sync = true })
