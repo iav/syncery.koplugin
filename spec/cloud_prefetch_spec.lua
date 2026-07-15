@@ -356,8 +356,7 @@ do
 end
 
 do
-    -- BUGFIX (confirmed empirically via the two-device investigation
-    -- harness): apply_staged_prefetch used to ONLY move files into
+    -- BUGFIX: apply_staged_prefetch used to ONLY move files into
     -- canonical storage, never staging anything at the FLAT
     -- cloud_staging/ level generateManifest actually scans. A book
     -- that was prefetched and applied but never genuinely
@@ -400,6 +399,48 @@ do
     h.assert_true(fa ~= nil,
         "a copy of the applied annotations content is ALSO staged at the flat level")
     if fa then fa:close() end
+end
+
+do
+    -- BUGFIX : apply_staged_prefetch now RETURNS true
+    -- when it genuinely consumed staged prefetch data, false otherwise.
+    -- main.lua's scheduled open-moment pull (fired 2.5s after
+    -- onReaderReady) uses this to skip its own do_cloud_upload dispatch
+    -- entirely when this call already delivered fresh data -- otherwise,
+    -- if the user opens a book WHILE Sync Now's own prefetch phase is
+    -- STILL mid-download for that exact book, do_cloud_upload's own
+    -- bidirectional cloud_sync would independently re-fetch
+    -- progress+annotations that were ALREADY staged (though unapplied)
+    -- moments earlier by Sync Now's own prefetch loop -- 4 downloads
+    -- for data that should cost 2.
+    local id3 = "CD34CD34CD34CD34CD34CD34CD34CD34"
+    local book_file3 = ap_dir .. "/return_value_book.epub"
+    do local f = io.open(book_file3, "wb"); f:write("x"); f:close() end
+
+    -- Nothing staged at all: must return false (falsy), not raise.
+    local plugin = make_fake_plugin()
+    local applied = PluginSync.apply_staged_prefetch(plugin, id3, book_file3)
+    h.assert_true(not applied,
+        "apply_staged_prefetch returns false/falsy when nothing was staged to apply")
+
+    -- Something genuinely staged and applied: must return true.
+    local function stage_for3(kind, content)
+        local path = ap_dir .. "/cloud_staging/prefetch/syncery-" .. kind .. "-" .. id3 .. ".json"
+        local f = io.open(path, "wb"); f:write(content); f:close()
+    end
+    stage_for3("progress", '{"entries":{"D1":{"percent":0.6}}}')
+    applied = PluginSync.apply_staged_prefetch(plugin, id3, book_file3)
+    h.assert_true(applied == true,
+        "apply_staged_prefetch returns true when it genuinely applied staged content")
+
+    -- Calling it AGAIN once already applied (canonical now exists): must
+    -- return false -- there is nothing NEW to apply this time, so the
+    -- caller correctly knows it must still do its own do_cloud_upload
+    -- dispatch (nothing was just freshly delivered by THIS call).
+    applied = PluginSync.apply_staged_prefetch(plugin, id3, book_file3)
+    h.assert_true(not applied,
+        "apply_staged_prefetch returns false on a second call once canonical "
+        .. "already exists -- nothing new was applied THIS time")
 end
 
 os.execute("rm -rf " .. ap_dir)
