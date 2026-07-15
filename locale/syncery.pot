@@ -440,10 +440,6 @@ msgstr ""
 msgid "Done"
 msgstr ""
 
-#: syncery_transports/plugin_sync.lua
-msgid "Downloading %d/%d..."
-msgstr ""
-
 #: syncery_update.lua
 msgid "Downloading update…"
 msgstr ""
@@ -1447,6 +1443,10 @@ msgstr ""
 #: syncery_ui/status_panel.lua syncery_ui/status_ui/init.lua
 #: syncery_ui/trash/init.lua
 msgid "Close"
+msgstr ""
+
+#: syncery_transports/plugin_sync.lua
+msgid "Syncing %d/%d..."
 msgstr ""
 
 #: _meta.lua
