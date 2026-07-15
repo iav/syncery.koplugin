@@ -30,6 +30,15 @@ local function make_plugin(opts)
         _cloud_online    = opts.cloud_online ~= false,
         _calls           = {},
         ui               = { document = { file = base .. "book.epub" } },
+        -- This spec's own concern is push DISPATCH counting/ordering, not
+        -- the per-kind toggle gates 
+        -- default all sync
+        -- toggles on so existing fixtures here keep exercising the SAME
+        -- push-dispatch behavior as before, unaffected by that fix.
+        sync_progress         = opts.sync_progress ~= false,
+        sync_annotations      = opts.sync_annotations ~= false,
+        sync_metadata         = opts.sync_metadata ~= false,
+        sync_render_settings  = opts.sync_render_settings ~= false,
     }
 
     function p:_isNetworkOnline()  return self._online end
@@ -37,9 +46,34 @@ local function make_plugin(opts)
     function p:getCurrentState()   return { file = opts.file or base .. "book.epub" } end
     function p:_isFileTypeSynced() return true end
 
+    -- Fix 4's content-hash push cache lives on disk under state_dir and
+    -- would otherwise persist ACROSS this file's separate do{} blocks
+    -- (they all share the same h.test_root). Each block here represents
+    -- an independent scenario, several reusing the same book paths with
+    -- the same fixed content (write_progress always writes the identical
+    -- string) -- without clearing the cache fresh per make_plugin() call,
+    -- a LATER block's push would be wrongly skipped as "unchanged from
+    -- an EARLIER, unrelated block", which is a test-fixture artifact, not
+    -- the real-world case the cache is meant to catch.
+    require("syncery_transports/plugin_sync")._write_push_cache(p, {})
+
+    -- Controllable per-book failure counts, simulating the
+    -- Orchestrator's own peek_transport_books introspection
+    -- tests bump p._failure_counts[file]
+    -- to simulate "this specific push attempt genuinely failed at the
+    -- network level", independent of do_cloud_upload's own "dispatched"
+    -- return value.
+    p._failure_counts = {}
     p._transport = {
         push_cloud_files = function(_, file, entries, ds)
             table.insert(p._calls, { m = "push", file = file, n = #entries })
+        end,
+        peek_transport_books = function(_, transport_id)
+            local out = {}
+            for file, count in pairs(p._failure_counts) do
+                out[#out + 1] = { book_file = file, state = { consecutive_failures = count } }
+            end
+            return out
         end,
     }
 
@@ -351,6 +385,128 @@ do
     h.assert_equal(#remaining, 2, "only_book failed → both the failed book AND the untouched one remain")
     h.assert_equal(remaining[1], expected[1], "remaining set matches (entry 1)")
     h.assert_equal(remaining[2], expected[2], "remaining set matches (entry 2)")
+end
+
+
+-- ---------------------------------------------------------------------------
+-- Fix 2: pushOpenedBooks now RETURNS the
+-- list of books it successfully pushed this round, so sync_all's Phase 2
+-- can exclude them from the "changed vs peer" comparison -- a book just
+-- pushed moments ago in Phase 1 would otherwise show up as "changed"
+-- there too (our own hash just changed relative to the peer's stale
+-- copy) and get a second, redundant push+pull in the SAME Sync Now.
+-- This test covers the return value in isolation; the exclusion these
+-- book_ids feed into is deep inside sync_all's multi-peer manifest loop
+-- and is covered instead by this design's own two-device simulation
+-- harness (spec/two_device_redundancy_investigation.lua, not part of
+-- this pass/fail suite), which reproduces the double-push end-to-end
+-- with a real Bridge/Orchestrator/Transport chain.
+-- ---------------------------------------------------------------------------
+
+do
+    local p = make_plugin{}
+    local path = p.state_dir
+    p:write_progress(path .. "ret_a.epub")
+    p:write_progress(path .. "ret_b.epub")
+    p:write_opened({ path .. "ret_a.epub", path .. "ret_b.epub" })
+    local succeeded = PluginSync.pushOpenedBooks(p)
+    table.sort(succeeded)
+    h.assert_equal(#succeeded, 2, "pushOpenedBooks returns both successfully pushed books")
+    h.assert_equal(succeeded[1], path .. "ret_a.epub", "returned set includes the first book")
+    h.assert_equal(succeeded[2], path .. "ret_b.epub", "returned set includes the second book")
+end
+
+do
+    -- A book whose push fails (deferred) must NOT appear in the returned
+    -- successful set.
+    local p = make_plugin{ cloud_online = false }
+    local path = p.state_dir
+    p:write_progress(path .. "ret_fail.epub")
+    p:write_opened({ path .. "ret_fail.epub" })
+    local succeeded = PluginSync.pushOpenedBooks(p)
+    h.assert_equal(#succeeded, 0,
+        "pushOpenedBooks returns an empty set when the only queued book's push is deferred")
+end
+
+do
+    -- No .opened file at all -- must return an empty table, not nil (so
+    -- callers can safely ipairs() over it without a nil-guard).
+    local p = make_plugin{}
+    os.remove(p.state_dir .. ".opened")
+    local succeeded = PluginSync.pushOpenedBooks(p)
+    h.assert_true(type(succeeded) == "table" and #succeeded == 0,
+        "pushOpenedBooks returns an empty table (not nil) when there is nothing queued")
+end
+
+
+-- ---------------------------------------------------------------------------
+-- Fix 1: do_cloud_upload's "dispatched"
+-- return does not mean the push actually reached the server -- a
+-- mid-flight network failure (distinct from the upfront-unreachable
+-- "deferred" case) used to still get the book cleared from .opened as if
+-- it had succeeded. Fix reads the Orchestrator's own pre-existing
+-- peek_transport_books introspection (consecutive_failures) immediately
+-- before and after dispatch; an increase means THIS attempt genuinely
+-- failed, regardless of the "dispatched" string.
+-- ---------------------------------------------------------------------------
+
+do
+    -- Simulate a push whose underlying network call fails mid-flight:
+    -- push_cloud_files still runs (do_cloud_upload still returns
+    -- "dispatched"), but consecutive_failures goes 0 -> 1 for this book,
+    -- exactly like a real Orchestrator would record for a genuine
+    -- failure.
+    local p = make_plugin{}
+    local path = p.state_dir
+    p:write_progress(path .. "fix1_fail.epub")
+    p:write_opened({ path .. "fix1_fail.epub" })
+
+    local real_push = p._transport.push_cloud_files
+    p._transport.push_cloud_files = function(self, file, entries, ds)
+        real_push(self, file, entries, ds)
+        p._failure_counts[file] = (p._failure_counts[file] or 0) + 1
+    end
+
+    local succeeded = PluginSync.pushOpenedBooks(p)
+    h.assert_equal(#succeeded, 0,
+        "fix1: a book whose push genuinely fails mid-flight is NOT in the succeeded set")
+
+    local remaining = p:read_opened()
+    h.assert_equal(#remaining, 1,
+        "fix1: the genuinely-failed book stays queued in .opened for the next Sync Now")
+    h.assert_equal(remaining[1], path .. "fix1_fail.epub")
+end
+
+do
+    -- Sanity check the OTHER direction: a normal, genuinely successful
+    -- push (consecutive_failures stays at 0, or the book has no prior
+    -- entry at all) must still clear .opened as before -- Fix 1 must not
+    -- make a healthy push look like a failure.
+    local p = make_plugin{}
+    local path = p.state_dir
+    p:write_progress(path .. "fix1_ok.epub")
+    p:write_opened({ path .. "fix1_ok.epub" })
+
+    local succeeded = PluginSync.pushOpenedBooks(p)
+    h.assert_equal(#succeeded, 1, "fix1: a genuinely successful push is still counted as succeeded")
+    local remaining = p:read_opened()
+    h.assert_equal(#remaining, 0, "fix1: a genuinely successful push still clears .opened")
+end
+
+do
+    -- A transport that does not implement peek_transport_books at all
+    -- (defensive fallback) must not raise, and must preserve the
+    -- PRE-FIX behavior (treat dispatch as success) rather than break.
+    local p = make_plugin{}
+    local path = p.state_dir
+    p._transport.peek_transport_books = nil
+    p:write_progress(path .. "fix1_no_peek.epub")
+    p:write_opened({ path .. "fix1_no_peek.epub" })
+
+    local ok_call, succeeded = pcall(PluginSync.pushOpenedBooks, p)
+    h.assert_true(ok_call, "fix1: a transport without peek_transport_books does not raise")
+    h.assert_equal(#succeeded, 1,
+        "fix1: without peek_transport_books, falls back to treating dispatch as success")
 end
 
 
