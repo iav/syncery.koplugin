@@ -803,6 +803,7 @@ function PluginSync.apply_staged_prefetch(plugin, book_id, book_file)
     if applied_progress or applied_annotations then
         require("util").makePath(staging_dir)
     end
+    local applied_progress_hash, applied_annotations_hash
     if applied_progress then
         local f = io.open(progress_dst, "rb")
         if f then
@@ -810,6 +811,9 @@ function PluginSync.apply_staged_prefetch(plugin, book_id, book_file)
             f:close()
             local out = io.open(staging_dir .. "syncery-progress-" .. book_id .. ".json", "wb")
             if out then out:write(content); out:close() end
+            if content and content ~= "" then
+                applied_progress_hash = _content_hash(content)
+            end
         end
     end
     if applied_annotations then
@@ -819,7 +823,37 @@ function PluginSync.apply_staged_prefetch(plugin, book_id, book_file)
             f:close()
             local out = io.open(staging_dir .. "syncery-annotations-" .. book_id .. ".json", "wb")
             if out then out:write(content); out:close() end
+            if content and content ~= "" then
+                applied_annotations_hash = _content_hash(content)
+            end
         end
+    end
+
+    -- BUGFIX: the design
+    -- guarantees this synchronous apply always completes BEFORE
+    -- do_cloud_upload's own scheduled open-moment pull (2.5s later) runs.
+    -- That means the FIRST time do_cloud_upload dispatches for this book
+    -- after a prefetch, it always finds an EMPTY Fix-4 push-content-cache
+    -- entry (apply_staged_prefetch never populated it before this) --
+    -- nothing to compare against, so it unconditionally proceeds with a
+    -- full push+pull, even though this content just arrived FROM the
+    -- peer and is already sitting on the server. Registering the
+    -- just-applied content's hash here, keyed by book_file (matching
+    -- do_cloud_upload's own push_cache[state.file] key), closes that one
+    -- guaranteed-redundant cycle: do_cloud_upload's next dispatch for
+    -- this book finds a matching hash and correctly skips re-pushing
+    -- content that was never ours to begin with.
+    if applied_progress_hash or applied_annotations_hash then
+        local push_cache = _read_push_cache(plugin)
+        local book_cache = push_cache[book_file] or {}
+        if applied_progress_hash then
+            book_cache.progress_hash = applied_progress_hash
+        end
+        if applied_annotations_hash then
+            book_cache.annotations_hash = applied_annotations_hash
+        end
+        push_cache[book_file] = book_cache
+        _write_push_cache(plugin, push_cache)
     end
 end
 
@@ -1320,7 +1354,7 @@ function PluginSync.sync_all(plugin, opts)
                 return
             end
 
-            -- 2b-prefetch. Remote-only books (never opened on this device) --
+            -- 2b-prefetch. Remote-only books (never opened on this device) 
             -- Reuses THIS SAME `entries`
             -- listing (Constraint O/Q) -- no second network round-trip.
             -- Constraint V: staged under prefetch/, never the flat top
