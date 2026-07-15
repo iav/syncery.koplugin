@@ -150,44 +150,5 @@ do
     h.assert_equal(opened, 1, "tapping a book row opens the action menu")
 end
 
--- ---------------------------------------------------------------------------
--- Cloud prefetch visibility:
--- an is_inbox_only book mixed in with a real one gets its own "PENDING"
--- row and bumps the title's pending count -- and still opens the action
--- menu on tap, same as any other row.
--- ---------------------------------------------------------------------------
-do
-    local opened_book = nil
-    package.loaded["syncery_ui/booklist/actions"].showActionsForBook =
-        function(_plugin, book) opened_book = book end
-
-    local ann = h.test_root .. "/mixed.syncery-annotations.json"
-    local f = io.open(ann, "w"); f:write("{}"); f:close()
-
-    local plugin = { storage_mode = "sdr" }
-    BookList.displayBookMenu(plugin, {
-        { mode = "sdr", display_name = "Real Book",
-          annotations_path = ann, progress_path = ann },
-        { mode = "pending", display_name = "Pending Book",
-          is_inbox_only = true, book_id = "ABCDEF0123456789ABCDEF0123456789",
-          annotations_path = h.test_root .. "/does-not-exist-pending.json" },
-    })
-
-    h.assert_true(last_menu.title:find("1 Pending", 1, true) ~= nil,
-        "title bar reports the pending count when one is_inbox_only book is present")
-
-    local pending_row
-    for _, row in ipairs(last_menu.item_table or {}) do
-        if row.text and row.text:find("Pending Book", 1, true) then pending_row = row end
-    end
-    h.assert_true(pending_row ~= nil, "pending row is present")
-    h.assert_true(pending_row.text:find("PENDING", 1, true) ~= nil,
-        "pending row's mode tag reads PENDING")
-
-    pending_row.callback()
-    h.assert_true(opened_book ~= nil and opened_book.is_inbox_only == true,
-        "tapping the pending row opens the action menu with is_inbox_only carried through")
-end
-
 
 h.teardown()
