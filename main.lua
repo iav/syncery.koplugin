@@ -1530,52 +1530,8 @@ function Syncery:onReaderReady()
         -- reachable.
         if pull_expected then
             self:_schedule("_open_cloud_pull", 2.5, function()
-                -- BUGFIX: if the user opens
-                -- a book WHILE Sync Now's own "never-opened" prefetch
-                -- phase is STILL mid-download for that exact book, the
-                -- EARLIER apply_staged_prefetch call above (synchronous,
-                -- at open) finds nothing staged yet and no-ops. Nothing
-                -- previously re-checked cloud_staging/prefetch/ before
-                -- THIS scheduled pull fired 2.5s later, so if Sync Now's
-                -- own download for this book completed in that window (a
-                -- very plausible race), do_cloud_upload below found
-                -- canonical storage still empty and ran its own
-                -- independent bootstrap-empty pull -- a genuine SECOND,
-                -- separate progress+annotations download for content
-                -- that was already sitting staged moments earlier.
-                --
-                -- Re-attempting apply_staged_prefetch here is safe to
-                -- call again regardless of whether the earlier call at
-                -- open already succeeded (it no-ops once canonical
-                -- already exists). If it succeeds HERE -- meaning Sync
-                -- Now's prefetch landed in the window between open and
-                -- now -- skip do_cloud_upload entirely for this
-                -- invocation rather than still calling it: there is
-                -- nothing left to push (we did not create this content)
-                -- and nothing left to pull (we just received the latest
-                -- copy from the very same source do_cloud_upload would
-                -- otherwise query), so dispatching it would just be a
-                -- second, redundant push+pull of the identical content
-                -- (confirmed via the harness -- merely finding real
-                -- canonical content does not make do_cloud_upload skip
-                -- its own network round-trip, since this device has
-                -- never dispatched this specific book before). Skipping
-                -- it does not lose the jump-prompt behavior --
-                -- checkRemote is independently scheduled above
-                -- regardless of whether this pull runs (explicitly
-                -- documented there as a harmless, mtime-gated fallback)
-                -- -- and does not need a "Reload" toast either, since
-                -- nothing has been rendered yet at this point in a
-                -- fresh book open for there to be anything stale to
-                -- reload.
-                local book_id = self.ui.doc_settings
-                    and self.ui.doc_settings:readSetting("partial_md5_checksum")
                 local s = self:getCurrentState()
-                local prefetch_applied = false
-                if book_id and s and s.file then
-                    prefetch_applied = PluginSync.apply_staged_prefetch(self, book_id, s.file)
-                end
-                if s and not prefetch_applied then self:_doCloudUpload(s) end
+                if s then self:_doCloudUpload(s) end
             end)
             -- No-op when online; offline + toggle on -> raise Wi-Fi, rerun.
             self:_wakeWifiForOpenPull(state)
