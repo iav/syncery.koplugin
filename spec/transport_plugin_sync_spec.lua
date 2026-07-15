@@ -44,6 +44,10 @@ local function make_plugin(opts)
     opts = opts or {}
     local p = {
         use_cloud    = opts.use_cloud    ~= false,
+        -- Fix 4's content-hash push cache
+        -- reads/writes under plugin.state_dir -- this fixture never set
+        -- it before that fix existed, since nothing here needed it.
+        state_dir    = opts.state_dir or (h.test_root .. "/"),
         sync_progress = opts.sync_progress ~= false,
         sync_annotations     = opts.sync_annotations,
         sync_metadata        = opts.sync_metadata,
@@ -74,6 +78,11 @@ local function make_plugin(opts)
     function p:_isCloudReachable() return self._cloud_online end
     function p:getCurrentState()  return opts.state end
     function p:_isFileTypeSynced() return opts.file_type_synced ~= false end
+
+    -- Fix 4's push-content cache persists on disk under state_dir and
+    -- would otherwise leak across this file's separate do{} blocks (they
+    -- share h.test_root) -- start each one fresh.
+    require("syncery_transports/plugin_sync")._write_push_cache(p, {})
     function p:_promptJump(args)
         table.insert(self._calls, { m = "_promptJump", args = args })
     end
@@ -242,6 +251,177 @@ do
     end
     h.assert_true(has_progress,
         "cloud upload: an in-memory empty progress envelope is staged so the position pull runs")
+end
+
+-- BUGFIX: the toggle checks above used to apply ONLY to
+-- the bootstrap-empty-envelope branch. If REAL content already existed
+-- on disk (e.g. from before the user turned a toggle off), it was read
+-- and pushed unconditionally, ignoring the toggle entirely. These two
+-- tests use a REAL book file with REAL existing canonical content --
+-- unlike the bootstrap tests above, which deliberately use a
+-- non-existent path to exercise the empty-envelope branch.
+local ProgressPaths = require("syncery_progress/paths")
+local AnnPaths       = require("syncery_ann/paths")
+
+do
+    local book = h.test_root .. "/existing_progress.epub"
+    local p_path = ProgressPaths.shared_progress_path(book)
+    require("util").makePath(p_path:match("^(.*/)"))
+    local f = io.open(p_path, "wb")
+    f:write('{"entries":{"dev1":{"percent":0.5}}}'); f:close()
+
+    local p = make_plugin{ sync_progress = false }
+    PluginSync.do_cloud_upload(p, { file = book })
+    local c = called(p, "push_cloud_files")
+    local has_progress = false
+    for _, e in ipairs((c and c.entries) or {}) do
+        if e.kind == "progress" then has_progress = true end
+    end
+    h.assert_false(has_progress,
+        "cloud upload: EXISTING progress content on disk is NOT pushed when sync_progress=false")
+end
+
+do
+    local book = h.test_root .. "/existing_annotations.epub"
+    local a_path = AnnPaths.shared_annotations_path(book)
+    require("util").makePath(a_path:match("^(.*/)"))
+    local f = io.open(a_path, "wb")
+    f:write('{"annotations":{"k":{"text":"existing highlight"}}}'); f:close()
+
+    local p = make_plugin{ sync_progress = false, sync_annotations = false,
+        sync_metadata = false, sync_render_settings = false }
+    PluginSync.do_cloud_upload(p, { file = book })
+    local c = called(p, "push_cloud_files")
+    local has_ann = false
+    for _, e in ipairs((c and c.entries) or {}) do
+        if e.kind == "annotations" then has_ann = true end
+    end
+    h.assert_false(has_ann,
+        "cloud upload: EXISTING annotations content on disk is NOT pushed "
+        .. "when all three annotation-covering toggles are off")
+end
+
+
+-- ---------------------------------------------------------------------------
+-- Fix 4: content-hash push cache. Real, EXISTING content that is
+-- byte-identical to what was already dispatched last time must be
+-- skipped -- but only when it genuinely repeats; a real change, or a
+-- different book entirely, must still push. Deliberately does NOT touch
+-- the bootstrap-empty-envelope tests above (Constraint: that path is
+-- explicitly excluded from this cache -- see the code comment on why).
+-- ---------------------------------------------------------------------------
+
+do
+    local book = h.test_root .. "/fix4_repeat.epub"
+    local p_path = ProgressPaths.shared_progress_path(book)
+    require("util").makePath(p_path:match("^(.*/)"))
+    local function write(content)
+        local f = io.open(p_path, "wb"); f:write(content); f:close()
+    end
+
+    write('{"entries":{"dev1":{"percent":0.10}}}')
+    local p = make_plugin{}
+    PluginSync.do_cloud_upload(p, { file = book })
+    h.assert_true(called(p, "push_cloud_files") ~= nil,
+        "fix4: first push with real content dispatches")
+
+    -- Second call, SAME content, SAME book -- must be skipped entirely
+    -- (zero push_cloud_files calls this time).
+    p._calls = {}
+    PluginSync.do_cloud_upload(p, { file = book })
+    h.assert_true(called(p, "push_cloud_files") == nil,
+        "fix4: identical content on a second call is skipped, not re-pushed")
+
+    -- Content genuinely changes -- must push again.
+    write('{"entries":{"dev1":{"percent":0.55}}}')
+    p._calls = {}
+    PluginSync.do_cloud_upload(p, { file = book })
+    h.assert_true(called(p, "push_cloud_files") ~= nil,
+        "fix4: genuinely changed content still pushes, cache does not stick forever")
+end
+
+do
+    -- A DIFFERENT book with the exact same content as another book's
+    -- cached entry must NOT be affected by that other book's cache --
+    -- the cache is keyed per book_file, not globally by content hash.
+    local book_a = h.test_root .. "/fix4_book_a.epub"
+    local book_b = h.test_root .. "/fix4_book_b.epub"
+    local pa = ProgressPaths.shared_progress_path(book_a)
+    local pb = ProgressPaths.shared_progress_path(book_b)
+    require("util").makePath(pa:match("^(.*/)"))
+    require("util").makePath(pb:match("^(.*/)"))
+    local same_content = '{"entries":{"dev1":{"percent":0.20}}}'
+    do local f = io.open(pa, "wb"); f:write(same_content); f:close() end
+    do local f = io.open(pb, "wb"); f:write(same_content); f:close() end
+
+    local p = make_plugin{}
+    PluginSync.do_cloud_upload(p, { file = book_a })
+    p._calls = {}
+    PluginSync.do_cloud_upload(p, { file = book_b })
+    h.assert_true(called(p, "push_cloud_files") ~= nil,
+        "fix4: a DIFFERENT book with identical content to another book's "
+        .. "cache entry still pushes -- the cache is per-book, not global")
+end
+
+
+-- ---------------------------------------------------------------------------
+-- Fix 4 refinement: the skip-cache must NEVER apply when the caller
+-- passes force_sync = true (state.force_sync). sync_changed (Phase 2)
+-- calls do_cloud_upload with this set because the manifest comparison
+-- ALREADY determined this book_id's hash differs from the peer's -- the
+-- whole point of that call is to run the bidirectional merge and pull
+-- the peer's side in, regardless of whether OUR OWN local content has
+-- changed since our last push. Skip-caching that call would silently
+-- skip the pull too. Confirmed originally via the two-device
+-- investigation harness, where NOT gating this caused real, silent data
+-- loss (a device's own round-trip sync stopped pulling a peer's
+-- contribution) before this force_sync bypass was added.
+-- ---------------------------------------------------------------------------
+
+do
+    local book = h.test_root .. "/fix4_force_sync.epub"
+    local p_path = ProgressPaths.shared_progress_path(book)
+    require("util").makePath(p_path:match("^(.*/)"))
+    local content = '{"entries":{"dev1":{"percent":0.30}}}'
+    local f = io.open(p_path, "wb"); f:write(content); f:close()
+
+    local p = make_plugin{}
+    -- First call (no force_sync): dispatches and populates the cache.
+    PluginSync.do_cloud_upload(p, { file = book })
+    h.assert_true(called(p, "push_cloud_files") ~= nil,
+        "fix4/force_sync: first call (no force_sync) dispatches normally")
+
+    -- Second call, SAME content, but force_sync = true (matching
+    -- sync_changed's call shape): must STILL dispatch, must NOT be
+    -- silently skipped by the cache.
+    p._calls = {}
+    PluginSync.do_cloud_upload(p, { file = book, force_sync = true })
+    h.assert_true(called(p, "push_cloud_files") ~= nil,
+        "fix4/force_sync: force_sync=true bypasses the skip-cache even "
+        .. "with byte-identical content, so a manifest-triggered pull is "
+        .. "never silently dropped")
+end
+
+do
+    -- The REVERSE ordering: force_sync=true FIRST must not corrupt the
+    -- cache for a later, normal (non-force_sync) call on the same book.
+    local book = h.test_root .. "/fix4_force_sync_order.epub"
+    local p_path = ProgressPaths.shared_progress_path(book)
+    require("util").makePath(p_path:match("^(.*/)"))
+    local content = '{"entries":{"dev1":{"percent":0.40}}}'
+    local f = io.open(p_path, "wb"); f:write(content); f:close()
+
+    local p = make_plugin{}
+    PluginSync.do_cloud_upload(p, { file = book, force_sync = true })
+    h.assert_true(called(p, "push_cloud_files") ~= nil,
+        "fix4/force_sync: a force_sync=true call dispatches")
+
+    p._calls = {}
+    PluginSync.do_cloud_upload(p, { file = book })
+    h.assert_true(called(p, "push_cloud_files") ~= nil,
+        "fix4/force_sync: a subsequent normal call still dispatches too "
+        .. "(force_sync calls never populate or consult the skip-cache, "
+        .. "so they cannot make a later normal call wrongly skip either)")
 end
 
 
