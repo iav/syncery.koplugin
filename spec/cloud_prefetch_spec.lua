@@ -355,6 +355,53 @@ do
         "the source is actually gone from prefetch/ once the move truly succeeds")
 end
 
+do
+    -- BUGFIX (confirmed empirically via the two-device investigation
+    -- harness): apply_staged_prefetch used to ONLY move files into
+    -- canonical storage, never staging anything at the FLAT
+    -- cloud_staging/ level generateManifest actually scans. A book
+    -- that was prefetched and applied but never genuinely
+    -- opened/read (so do_cloud_upload never ran for it) stayed in
+    -- generateManifest's "never-opened" candidate list FOREVER
+    -- (my_manifest.files[book_id] never got an entry), AND the
+    -- prefetch staleness check ALWAYS re-downloaded it (the staged
+    -- prefetch/ copy was just moved away, so "not staged_size" read
+    -- as true every time) -- both firing on every subsequent Sync
+    -- Now, indefinitely, for a book with zero real local activity
+    -- beyond the one apply. The fix stages a copy of the just-applied
+    -- content at the flat level too, exactly mirroring what a real
+    -- push would have left there.
+    local id2 = "AB12AB12AB12AB12AB12AB12AB12AB12"
+    local book_file2 = ap_dir .. "/flat_stage_book.epub"
+    do local f = io.open(book_file2, "wb"); f:write("x"); f:close() end
+
+    local function stage_for2(kind, content)
+        local path = ap_dir .. "/cloud_staging/prefetch/syncery-" .. kind .. "-" .. id2 .. ".json"
+        local f = io.open(path, "wb"); f:write(content); f:close()
+    end
+    stage_for2("progress", '{"entries":{"D1":{"percent":0.4}}}')
+    stage_for2("annotations", '{"annotations":{"k":{"text":"hi"}}}')
+
+    local plugin = make_fake_plugin()
+    PluginSync.apply_staged_prefetch(plugin, id2, book_file2)
+
+    local flat_progress = ap_dir .. "/cloud_staging/syncery-progress-" .. id2 .. ".json"
+    local flat_annotations = ap_dir .. "/cloud_staging/syncery-annotations-" .. id2 .. ".json"
+    local fp = io.open(flat_progress, "rb")
+    h.assert_true(fp ~= nil,
+        "a copy of the applied progress content is ALSO staged at the flat "
+        .. "cloud_staging/ level, not just moved into canonical storage")
+    if fp then
+        h.assert_equal(fp:read("*a"), '{"entries":{"D1":{"percent":0.4}}}',
+            "the flat-staged copy's content matches what was applied")
+        fp:close()
+    end
+    local fa = io.open(flat_annotations, "rb")
+    h.assert_true(fa ~= nil,
+        "a copy of the applied annotations content is ALSO staged at the flat level")
+    if fa then fa:close() end
+end
+
 os.execute("rm -rf " .. ap_dir)
 
 -- ── _prefetchViaFallback (Constraints S, T -- corrected during implementation) ──
