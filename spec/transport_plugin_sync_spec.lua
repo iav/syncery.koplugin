@@ -319,23 +319,27 @@ do
         local f = io.open(p_path, "wb"); f:write(content); f:close()
     end
 
+    -- skip_if_unchanged = true: matches pushOpenedBooks' own call shape,
+    -- the ONLY caller Fix 4's cache is opt-in for (see the code comment
+    -- on use_skip_cache -- every other call site must NOT set this, so
+    -- it always dispatches instead).
     write('{"entries":{"dev1":{"percent":0.10}}}')
     local p = make_plugin{}
-    PluginSync.do_cloud_upload(p, { file = book })
+    PluginSync.do_cloud_upload(p, { file = book, skip_if_unchanged = true })
     h.assert_true(called(p, "push_cloud_files") ~= nil,
         "fix4: first push with real content dispatches")
 
     -- Second call, SAME content, SAME book -- must be skipped entirely
     -- (zero push_cloud_files calls this time).
     p._calls = {}
-    PluginSync.do_cloud_upload(p, { file = book })
+    PluginSync.do_cloud_upload(p, { file = book, skip_if_unchanged = true })
     h.assert_true(called(p, "push_cloud_files") == nil,
         "fix4: identical content on a second call is skipped, not re-pushed")
 
     -- Content genuinely changes -- must push again.
     write('{"entries":{"dev1":{"percent":0.55}}}')
     p._calls = {}
-    PluginSync.do_cloud_upload(p, { file = book })
+    PluginSync.do_cloud_upload(p, { file = book, skip_if_unchanged = true })
     h.assert_true(called(p, "push_cloud_files") ~= nil,
         "fix4: genuinely changed content still pushes, cache does not stick forever")
 end
@@ -355,9 +359,9 @@ do
     do local f = io.open(pb, "wb"); f:write(same_content); f:close() end
 
     local p = make_plugin{}
-    PluginSync.do_cloud_upload(p, { file = book_a })
+    PluginSync.do_cloud_upload(p, { file = book_a, skip_if_unchanged = true })
     p._calls = {}
-    PluginSync.do_cloud_upload(p, { file = book_b })
+    PluginSync.do_cloud_upload(p, { file = book_b, skip_if_unchanged = true })
     h.assert_true(called(p, "push_cloud_files") ~= nil,
         "fix4: a DIFFERENT book with identical content to another book's "
         .. "cache entry still pushes -- the cache is per-book, not global")
@@ -386,14 +390,17 @@ do
     local f = io.open(p_path, "wb"); f:write(content); f:close()
 
     local p = make_plugin{}
-    -- First call (no force_sync): dispatches and populates the cache.
-    PluginSync.do_cloud_upload(p, { file = book })
+    -- First call opts IN (skip_if_unchanged = true, matching
+    -- pushOpenedBooks' shape) so it genuinely populates a cache entry
+    -- that WOULD cause a hit on unchanged content next time.
+    PluginSync.do_cloud_upload(p, { file = book, skip_if_unchanged = true })
     h.assert_true(called(p, "push_cloud_files") ~= nil,
-        "fix4/force_sync: first call (no force_sync) dispatches normally")
+        "fix4/force_sync: first call (skip_if_unchanged) dispatches normally")
 
     -- Second call, SAME content, but force_sync = true (matching
     -- sync_changed's call shape): must STILL dispatch, must NOT be
-    -- silently skipped by the cache.
+    -- silently skipped by the cache, even though the first call above
+    -- left a matching cache entry behind.
     p._calls = {}
     PluginSync.do_cloud_upload(p, { file = book, force_sync = true })
     h.assert_true(called(p, "push_cloud_files") ~= nil,
@@ -403,8 +410,15 @@ do
 end
 
 do
-    -- The REVERSE ordering: force_sync=true FIRST must not corrupt the
-    -- cache for a later, normal (non-force_sync) call on the same book.
+    -- The REVERSE ordering: force_sync=true FIRST must NEVER populate
+    -- the push cache (the code deliberately forces push_cache = {} for
+    -- force_sync calls and skips the write-back entirely -- see the
+    -- comment above use_skip_cache's write-back block: writing from an
+    -- empty forced table would silently WIPE every OTHER book's cached
+    -- entry). So a LATER call that opts into skip_if_unchanged on the
+    -- same (unchanged) content must find NO cache entry and correctly
+    -- DISPATCH, not skip -- proving force_sync's dispatch left the cache
+    -- untouched rather than writing something that could interfere.
     local book = h.test_root .. "/fix4_force_sync_order.epub"
     local p_path = ProgressPaths.shared_progress_path(book)
     require("util").makePath(p_path:match("^(.*/)"))
@@ -417,11 +431,55 @@ do
         "fix4/force_sync: a force_sync=true call dispatches")
 
     p._calls = {}
+    PluginSync.do_cloud_upload(p, { file = book, skip_if_unchanged = true })
+    h.assert_true(called(p, "push_cloud_files") ~= nil,
+        "fix4/force_sync: force_sync's own dispatch left the cache "
+        .. "untouched -- a later skip_if_unchanged call on the same "
+        .. "content still dispatches (finds no entry), proving force_sync "
+        .. "never wrote one")
+end
+
+
+-- ---------------------------------------------------------------------------
+-- BUGFIX: a PLAIN call -- no skip_if_unchanged,
+-- no force_sync, matching the open-moment pull / resume pull / autosave
+-- debounce call sites' shape -- must ALWAYS dispatch, even with byte-
+-- identical content, because push and pull are the SAME bidirectional
+-- operation here (see the use_skip_cache comment): skipping the dispatch
+-- because OUR OWN content looks unchanged also means never asking the
+-- server whether a PEER pushed something new. Confirmed via two real-
+-- device manifestations traced to this exact gap: device B never saw
+-- device A's new annotation, and device A missed a genuine recency-based
+-- jump-prompt window for device B's progress update, both because the
+-- kind in question looked cache-unchanged on a plain call and the whole
+-- bidirectional check was skipped. Fix 4's skip-cache must now be OPT-IN
+-- (skip_if_unchanged = true), so a plain call never consults it at all.
+-- ---------------------------------------------------------------------------
+
+do
+    local book = h.test_root .. "/fix4_plain_call_always_dispatches.epub"
+    local p_path = ProgressPaths.shared_progress_path(book)
+    require("util").makePath(p_path:match("^(.*/)"))
+    local content = '{"entries":{"dev1":{"percent":0.10}}}'
+    local f = io.open(p_path, "wb"); f:write(content); f:close()
+
+    local p = make_plugin{}
     PluginSync.do_cloud_upload(p, { file = book })
     h.assert_true(called(p, "push_cloud_files") ~= nil,
-        "fix4/force_sync: a subsequent normal call still dispatches too "
-        .. "(force_sync calls never populate or consult the skip-cache, "
-        .. "so they cannot make a later normal call wrongly skip either)")
+        "plain call: first dispatch with real content dispatches")
+
+    -- Second plain call, SAME content, SAME book, no flags at all --
+    -- must STILL dispatch (never skipped), unlike the skip_if_unchanged
+    -- variant above. This is the exact shape of the scheduled open-
+    -- moment pull / resume pull / autosave debounce -- calls that exist
+    -- specifically to keep checking the server for a peer's update.
+    p._calls = {}
+    PluginSync.do_cloud_upload(p, { file = book })
+    h.assert_true(called(p, "push_cloud_files") ~= nil,
+        "plain call: identical content on a second plain call still "
+        .. "dispatches -- Fix 4's cache is opt-in and a plain call never "
+        .. "consults it, so the bidirectional check (and therefore any "
+        .. "peer update discovery) is never silently skipped")
 end
 
 
