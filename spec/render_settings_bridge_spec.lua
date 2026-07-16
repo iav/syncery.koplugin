@@ -291,7 +291,11 @@ do
 end
 
 do
-    local ui = h.make_fake_ui({ settings = {} })
+    -- Explicit starting value (18), not nil: this test is about key
+    -- correctness/unwrap/gating, not about the first-ever-sync nil case
+    -- (that gets its own dedicated test below) -- an explicit prior
+    -- value genuinely changing is what "applied" should mean here.
+    local ui = h.make_fake_ui({ settings = { copt_font_size = 18 } })
     local applied = RenderBridge.apply_from_remote(ui,
         { copt_font_size = entry(24, "2025-01-01 00:00:00") },
         toggles("master", "font_size"))
@@ -311,6 +315,101 @@ do
         toggles("master", "line_spacing"))
     h.assert_false(applied, "apply: field off -> nothing applied")
     h.assert_nil(ui._settings.copt_font_size, "apply: disabled field not written")
+end
+
+-- ----------------------------------------------------------------------------
+-- BUGFIX: first-ever cross-device
+-- sync of a field THIS device never explicitly customized (doc_settings
+-- has nothing for this book yet) must still WRITE the peer's value (so
+-- the data is correctly recorded/synced going forward), but "applied"
+-- must reflect whether something ACTUALLY changes for THIS device's
+-- user -- compared against the LIVE effective value (a global
+-- preference or KOReader's own hardcoded default -- see
+-- _read_live_state, traced against frontend/configurable.lua and
+-- frontend/apps/reader/modules/readerfont.lua), not merely "doc_settings
+-- had nothing saved yet". Confirmed via real WebDAV data (part 1: two
+-- genuinely different devices held IDENTICAL untouched-default values,
+-- a false positive) and via a follow-up real-device test (part 2: a
+-- deliberately different peer value, e.g. font_face=OpenDyslexic vs
+-- this device's own default, on a book neither device had opened
+-- before, correctly still triggers "applied").
+-- ----------------------------------------------------------------------------
+
+do
+    -- Part 1: never customized, peer's value MATCHES this device's own
+    -- live default (e.g. both fell back to the same built-in default) --
+    -- nothing is visibly changing, must NOT report applied.
+    local ui = h.make_fake_ui({
+        settings     = {},                  -- doc_settings: never saved
+        configurable = { font_size = 24 },  -- live default happens to match remote
+    })
+    local applied = RenderBridge.apply_from_remote(ui,
+        { copt_font_size = entry(24, "2025-01-01 00:00:00") },
+        toggles("master", "font_size"))
+    h.assert_false(applied,
+        "apply: never-customized field whose peer value MATCHES this "
+        .. "device's own live default is NOT reported as applied -- "
+        .. "nothing is visibly changing")
+    h.assert_nil(ui._settings.copt_font_size,
+        "apply: values already matched (live default == remote), so there "
+        .. "is nothing to write -- doc_settings stays untouched, not a "
+        .. "redundant explicit copy of what the live default already gives")
+end
+
+do
+    -- Part 2 (the new capability): never customized, but peer's value
+    -- GENUINELY DIFFERS from this device's own live default -- e.g. a
+    -- peer deliberately set font_face=OpenDyslexic while this device's
+    -- own live default is something else, on a book THIS device has
+    -- never opened before. Must STILL report applied: a real,
+    -- deliberate peer customization must not be silenced just because
+    -- this device happens to be seeing the book for the first time.
+    local ui = h.make_fake_ui({
+        settings     = {},                       -- doc_settings: never saved
+        configurable = { font_size = 16 },       -- live default DIFFERS from remote
+    })
+    local applied = RenderBridge.apply_from_remote(ui,
+        { copt_font_size = entry(24, "2025-01-01 00:00:00") },
+        toggles("master", "font_size"))
+    h.assert_true(applied,
+        "apply: never-customized field whose peer value DIFFERS from "
+        .. "this device's own live default (16 vs 24) IS reported as "
+        .. "applied, even though this book was never opened here before")
+    h.assert_equal(ui._settings.copt_font_size, 24, "apply: value written as usual")
+end
+
+do
+    -- The SAME field, but THIS device DOES have an explicit prior value
+    -- in doc_settings: a genuine overwrite must still report "applied"
+    -- normally -- unaffected by the live-state fallback (doc_settings
+    -- wins outright when present, live state is only consulted when
+    -- doc_settings has nothing).
+    local ui = h.make_fake_ui({ settings = { copt_font_size = 18 } })
+    local applied = RenderBridge.apply_from_remote(ui,
+        { copt_font_size = entry(24, "2025-01-01 00:00:00") },
+        toggles("master", "font_size"))
+    h.assert_true(applied,
+        "apply: an EXPLICIT prior value (18) genuinely overwritten by remote "
+        .. "(24) still reports applied -- this device's user HAD something changing")
+    h.assert_equal(ui._settings.copt_font_size, 24, "apply: value written as usual")
+end
+
+do
+    -- font_face uses a DIFFERENT live-state object (ui.font.font_face,
+    -- not ui.document.configurable) -- same fallback logic, different
+    -- code path in _read_live_state; cover it explicitly.
+    local ui = h.make_fake_ui({
+        settings = {},                    -- doc_settings: never saved
+        font     = { font_face = "Noto Serif" },  -- live default
+    })
+    local applied = RenderBridge.apply_from_remote(ui,
+        { font_face = entry("OpenDyslexic", "2025-01-01 00:00:00") },
+        toggles("master", "font_face"))
+    h.assert_true(applied,
+        "apply: font_face uses ui.font as its live-state fallback too -- "
+        .. "a genuinely different peer font_face (OpenDyslexic vs this "
+        .. "device's live Noto Serif) reports applied")
+    h.assert_equal(ui._settings.font_face, "OpenDyslexic", "apply: font_face written")
 end
 
 do
@@ -393,8 +492,11 @@ end
 
 do
     -- Applying the SAME entry twice: the second time is not strictly newer
-    -- than the cached snapshot -> no-op (echo guard).
-    local ui = h.make_fake_ui({ settings = {} })
+    -- than the cached snapshot -> no-op (echo guard). Explicit starting
+    -- value (18, not nil): this test is about the echo guard, not the
+    -- first-ever-sync nil case -- an explicit prior value genuinely
+    -- changing is what "applied1 = true" should mean here.
+    local ui = h.make_fake_ui({ settings = { copt_font_size = 18 } })
     local e = { copt_font_size = entry(24, "2025-01-01 00:00:00") }
     local applied1 = RenderBridge.apply_from_remote(ui, e, toggles("master", "font_size"))
     local applied2 = RenderBridge.apply_from_remote(ui, e, toggles("master", "font_size"))
