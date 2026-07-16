@@ -301,7 +301,74 @@ function Transport.new(opts)
     --- cloud sync may run with no live document (book closed), and
     --- Merge.three_way treats nil as "no overlap pass" — identical to the
     --- closed-book Syncthing case.
-    local function _build_merge_callback(kind, book_file, book_id)
+    local function _build_merge_callback(kind, book_file, book_id, is_prefetch)
+        -- BUGFIX: prefetch check MOVED
+        -- FIRST and re-keyed on a SEPARATE is_prefetch flag, not a
+        -- distinct "prefetch_progress"/"prefetch_annotations" kind. The
+        -- old distinct-kind approach correctly signalled "route to
+        -- cloud_staging/prefetch/, not canonical" to THIS function, but
+        -- that same kind value was ALSO used earlier (_prepare, via
+        -- Staging.cloud_name_for) to compute the REMOTE cloud object
+        -- name -- which nothing ever re-translated back to "progress"/
+        -- "annotations" for that purpose. The fallback prefetch was
+        -- therefore reading from/writing to "syncery-prefetch_progress-
+        -- {id}.json", a cloud object no genuine push ever writes to,
+        -- instead of the peer's real "syncery-progress-{id}.json". kind
+        -- is now ALWAYS the real remote kind; is_prefetch is the
+        -- routing signal, carried on the payload instead of overloading
+        -- the wire-visible kind value.
+        if is_prefetch and (kind == "progress" or kind == "annotations") then
+            -- Cloud prefetch fallback. Unlike the regular "annotations"/
+            -- "progress" branches below, this deliberately does NOT
+            -- touch canonical storage (no book_file/canonical_path
+            -- involved at all) -- it reads income_file (the raw
+            -- downloaded remote content) and places it into
+            -- cloud_staging/prefetch/, reusing the SAME validated-write
+            -- helper the Cloud Storage+ path uses
+            -- (PluginSync._validateAndPlace), so there is one
+            -- validated-write implementation, not two.
+            -- BUGFIX (confirmed against the REAL frontend/apps/
+            -- cloudstorage/syncservice.lua source, not assumption):
+            -- SyncService.sync's own loop is
+            --   local ok, cb_return = pcall(sync_cb, file_path, cached_file_path, income_file_path)
+            --   if not ok or not cb_return then ... return end
+            --   -- (falls through to) api:uploadFile(..., file_path, ...)
+            -- Returning a truthy value from THIS callback is a direct
+            -- instruction to SyncService: upload file_path's CURRENT
+            -- on-disk content to the remote, right now. This callback
+            -- never touches local_file (file_path) -- it is purely a
+            -- read: consume income_file, place a copy under
+            -- cloud_staging/prefetch/. If it returned true on success,
+            -- SyncService would faithfully re-upload the UNCHANGED
+            -- bootstrap-empty envelope staged before this sync began,
+            -- silently overwriting the peer's real remote data with
+            -- nothing. Fixed: this callback must ALWAYS return false --
+            -- "please do not upload" -- regardless of whether the fetch
+            -- itself succeeded. Success/failure of the fetch is
+            -- observable to callers via the orchestrator's aggregated
+            -- pull_book result, which is independent of this value (see
+            -- Adapter:upload: its own callback(true, nil) fires
+            -- unconditionally once svc.sync's synchronous dispatch does
+            -- not raise, regardless of what THIS callback returns).
+            return function(local_file, cached_file, income_file)
+                if not (book_id and income_file) then return false end
+                local f = io.open(income_file, "rb")
+                if not f then return false end
+                local content = f:read("*a")
+                f:close()
+                if not content or content == "" then return false end
+                local PluginSync = require("syncery_transports/plugin_sync")
+                local prefetch_dir = staging_dir_fn():gsub("/+$", "") .. "/prefetch/"
+                local ok_mkpath = pcall(function()
+                    require("util").makePath(prefetch_dir)
+                end)
+                if not ok_mkpath then return false end
+                local final_path = prefetch_dir .. "syncery-" .. kind
+                    .. "-" .. book_id .. ".json"
+                PluginSync._validateAndPlace(content, final_path)
+                return false
+            end
+        end
         if kind == "annotations" then
             return SyncServiceAdapter.make_annotation_sync_callback({
                 canonical_path = AnnPaths.shared_annotations_path(book_file),
@@ -342,34 +409,6 @@ function Transport.new(opts)
                 end
                 write_json(local_file, merged)
                 return true
-            end
-        elseif kind == "prefetch_progress" or kind == "prefetch_annotations" then
-            -- Cloud prefetch fallback. Unlike
-            -- "annotations"/"progress", this deliberately does NOT touch
-            -- canonical storage (no book_file/canonical_path involved at
-            -- all) -- it reads income_file (the raw downloaded remote
-            -- content) and places it into cloud_staging/prefetch/,
-            -- reusing the SAME validated-write helper the Cloud Storage+
-            -- path uses (PluginSync._validateAndPlace), so there is one
-            -- validated-write implementation, not two.
-            local actual_kind = (kind == "prefetch_progress") and "progress" or "annotations"
-            return function(local_file, cached_file, income_file)
-                if not (book_id and income_file) then return false end
-                local f = io.open(income_file, "rb")
-                if not f then return false end
-                local content = f:read("*a")
-                f:close()
-                if not content or content == "" then return false end
-                local PluginSync = require("syncery_transports/plugin_sync")
-                local prefetch_dir = staging_dir_fn():gsub("/+$", "") .. "/prefetch/"
-                local ok_mkpath = pcall(function()
-                    require("util").makePath(prefetch_dir)
-                end)
-                if not ok_mkpath then return false end
-                local final_path = prefetch_dir .. "syncery-" .. actual_kind
-                    .. "-" .. book_id .. ".json"
-                local ok = PluginSync._validateAndPlace(content, final_path)
-                return ok and true or false
             end
         end
         return nil
@@ -428,7 +467,7 @@ function Transport.new(opts)
         -- SyncServiceAdapter.make_*). Async from here (online: synchronous
         -- merge; offline: deferred rerun, F2). The provider's callback
         -- fires exactly once per its interface contract.
-        local merge_cb = _build_merge_callback(kind, book_file, payload.book_id)
+        local merge_cb = _build_merge_callback(kind, book_file, payload.book_id, payload.is_prefetch)
         -- The merge callback runs only AFTER the provider downloaded the remote
         -- object (Cloud:sync invokes it with the income file) -- i.e. the server
         -- responded, so it is reachable.  Wrap it to signal that, then defer to
