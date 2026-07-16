@@ -54,11 +54,9 @@ local Staging = {}
 
 
 Staging.KINDS = {
-    progress            = true,
-    annotations         = true,
-    manifest            = true,
-    prefetch_progress   = true,
-    prefetch_annotations = true,
+    progress    = true,
+    annotations = true,
+    manifest    = true,
 }
 
 
