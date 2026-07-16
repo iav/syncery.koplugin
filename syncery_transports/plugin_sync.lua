@@ -57,6 +57,9 @@ function PluginSync.schedule_cloud_upload(plugin, state)
     if not plugin.use_cloud or not state then return end
     if not Settings.is_cloud_configured() then return end
 
+    if _G.SYNCERY_DEBUG_LOG then
+        _G.SYNCERY_DEBUG_LOG.cloud_upload_scheduled(state.file, plugin.cloud_upload_delay)
+    end
     plugin:_schedule("_cloud_upload_action", plugin.cloud_upload_delay, function()
         PluginSync.do_cloud_upload(plugin, state)
     end)
@@ -131,6 +134,10 @@ function PluginSync.do_cloud_upload(plugin, state)
     state = state or plugin:getCurrentState()
     if not state or not plugin:_isFileTypeSynced(state.file) then return "skipped" end
 
+    if _G.SYNCERY_DEBUG_LOG then
+        _G.SYNCERY_DEBUG_LOG.do_cloud_upload_entry(state.file, state.force_sync)
+    end
+
     -- Gate on CLOUD reachability (real internet + a bounded probe to the
     -- configured server), not the link-only `_isNetworkOnline`: KOReader runs
     -- the WebDAV/Dropbox transfer synchronously on the UI thread, so an
@@ -151,25 +158,30 @@ function PluginSync.do_cloud_upload(plugin, state)
     local entries = {}
     local p_path = ProgressPaths.shared_progress_path(state.file)
     local a_path = AnnPaths.shared_annotations_path(state.file)
-    -- Fix 4's hash-skip-cache must ONLY apply when THIS call's own
-    -- reason for existing is "local content might have changed" (Phase
-    -- 1, pushOpenedBooks -- state.force_sync is unset/false there). It
-    -- must NEVER apply when the caller is sync_changed (Phase 2): that
-    -- call exists BECAUSE the manifest comparison already found this
-    -- book_id's hash differs from the peer's -- the whole point of
-    -- calling do_cloud_upload there is to run the bidirectional merge
-    -- and PULL the peer's side in, regardless of whether OUR OWN local
-    -- content has changed since our last push. Skip-caching that call
-    -- would silently skip the pull too, since push and pull are the
-    -- SAME operation here -- confirmed via the two-device investigation
-    -- harness: an EARLIER attempt to fix this cache's other gap (the
-    -- bidirectional merge re-encoding canonical with non-deterministic
-    -- key ordering, so a raw hash rarely matches across calls anyway)
-    -- caused real, silent DATA LOSS in exactly this path (a device's
-    -- own round-trip sync stopped pulling a peer's contribution) --
-    -- reverted immediately. state.force_sync = true is how
-    -- sync_changed's call site (below) opts out of this cache entirely.
-    local use_skip_cache = not state.force_sync
+    -- BUGFIX: Fix 4's
+    -- hash-skip-cache was applied by DEFAULT to every do_cloud_upload call
+    -- except the explicit force_sync=true ones. That meant the regular
+    -- open-moment pull, the autosave-debounced upload, and the resume
+    -- pull -- every call whose WHOLE PURPOSE is "check the server for a
+    -- peer's update, regardless of whether OUR OWN content changed" --
+    -- could see cache_hit=true (our OWN content unchanged since our last
+    -- push) and skip the ENTIRE bidirectional dispatch, silently never
+    -- asking the server at all. Two confirmed real-device manifestations:
+    -- (a) device B never discovered device A's newly-pushed annotation
+    -- because B's own annotations content looked unchanged; (b) device A
+    -- missed a genuine recency-based jump-prompt window for device B's
+    -- progress update for the same reason on the progress kind. Fix:
+    -- invert the default to OPT-IN. use_skip_cache is now true ONLY when
+    -- the caller explicitly sets state.skip_if_unchanged = true --
+    -- currently only pushOpenedBooks does this (the ORIGINAL, narrow Fix
+    -- 4 target: a book re-added to .opened on every Sync Now / close,
+    -- getting redundantly re-pushed even when byte-identical). Every
+    -- other call site (open-moment pull, resume pull, the
+    -- schedule_cloud_upload debounce, sync_changed/_sync_fallback's
+    -- force_sync=true calls) needs no code change: they simply never set
+    -- this flag, so they now always dispatch, restoring "always check the
+    -- server" for the calls that exist specifically to do that.
+    local use_skip_cache = state.skip_if_unchanged == true and not state.force_sync
     local push_cache = use_skip_cache and _read_push_cache(plugin) or {}
     local book_cache = push_cache[state.file] or {}
     local cache_dirty = false
@@ -220,8 +232,13 @@ function PluginSync.do_cloud_upload(plugin, state)
             -- attempt, with every later Sync Now wrongly skipped as
             -- "unchanged", even though the whole POINT is to keep asking
             -- for whatever the peer might now have.
-            if is_real_content and use_skip_cache
-                    and book_cache.progress_hash == _content_hash(content) then
+            local cache_hit = is_real_content and use_skip_cache
+                    and book_cache.progress_hash == _content_hash(content)
+            if _G.SYNCERY_DEBUG_LOG then
+                _G.SYNCERY_DEBUG_LOG.do_cloud_upload_entry_decision(
+                    state.file, "progress", is_real_content, use_skip_cache, cache_hit)
+            end
+            if cache_hit then
                 -- unchanged since the last successfully cached push: skip
             else
                 table.insert(entries, { kind = "progress", content = content })
@@ -256,8 +273,13 @@ function PluginSync.do_cloud_upload(plugin, state)
             -- Same reasoning as the progress side above: only skip-cache
             -- real, existing content when use_skip_cache allows it --
             -- never the bootstrap-empty envelope, never sync_changed's call.
-            if is_real_content and use_skip_cache
-                    and book_cache.annotations_hash == _content_hash(content) then
+            local cache_hit = is_real_content and use_skip_cache
+                    and book_cache.annotations_hash == _content_hash(content)
+            if _G.SYNCERY_DEBUG_LOG then
+                _G.SYNCERY_DEBUG_LOG.do_cloud_upload_entry_decision(
+                    state.file, "annotations", is_real_content, use_skip_cache, cache_hit)
+            end
+            if cache_hit then
                 -- unchanged since the last successfully cached push: skip
             else
                 table.insert(entries, { kind = "annotations", content = content })
@@ -265,8 +287,17 @@ function PluginSync.do_cloud_upload(plugin, state)
             end
         end
     end
+    if _G.SYNCERY_DEBUG_LOG then
+        _G.SYNCERY_DEBUG_LOG.do_cloud_upload_dispatch_decision(
+            state.file, #entries, state.force_sync)
+    end
     if #entries == 0 then return end
 
+    local kinds_pushed = {}
+    for _, e in ipairs(entries) do kinds_pushed[#kinds_pushed + 1] = e.kind end
+    if _G.SYNCERY_DEBUG_LOG then
+        _G.SYNCERY_DEBUG_LOG.push_cloud_files_call(state.file, kinds_pushed)
+    end
     plugin._transport:push_cloud_files(state.file, entries,
         plugin.ui and plugin.ui.doc_settings)
 
@@ -315,6 +346,10 @@ function PluginSync.do_cloud_upload(plugin, state)
         if cache_dirty then
             push_cache[state.file] = book_cache
             _write_push_cache(plugin, push_cache)
+        end
+        if _G.SYNCERY_DEBUG_LOG then
+            _G.SYNCERY_DEBUG_LOG.push_cache_written(
+                state.file, cache_dirty, book_cache.progress_hash, book_cache.annotations_hash)
         end
     end
 
@@ -379,13 +414,23 @@ end
 local function pushOpenedBooks(plugin, info_fn, only_book)
     local path = plugin.state_dir .. ".opened"
     local f = io.open(path, "rb")
-    if not f then return {} end
+    if not f then
+        if _G.SYNCERY_DEBUG_LOG then
+            _G.SYNCERY_DEBUG_LOG.opened_file_read(path, 0, only_book)
+        end
+        return {}
+    end
     local opened = {}
     for line in f:lines() do
         local book = line:gsub("%s+$", "")
         if book ~= "" then opened[book] = true end
     end
     f:close()
+    local opened_count = 0
+    for _ in pairs(opened) do opened_count = opened_count + 1 end
+    if _G.SYNCERY_DEBUG_LOG then
+        _G.SYNCERY_DEBUG_LOG.opened_file_read(path, opened_count, only_book)
+    end
     if not next(opened) then return {} end
 
     -- Bounded, single-book mode: teardown.lua's Step 3 passes only_book
@@ -452,10 +497,20 @@ local function pushOpenedBooks(plugin, info_fn, only_book)
             end
         end
         local failures_before = _cloud_consecutive_failures_for(plugin, book)
-        local ok, status = pcall(PluginSync.do_cloud_upload, plugin, { file = book })
+        -- skip_if_unchanged = true: THIS is the one call site Fix 4's
+        -- hash-skip-cache is meant for -- a book re-added to .opened on
+        -- every Sync Now / close, redundantly re-pushed even when
+        -- byte-identical. See the do_cloud_upload comment on
+        -- use_skip_cache for why every OTHER call site must NOT set this.
+        local ok, status = pcall(PluginSync.do_cloud_upload, plugin,
+            { file = book, skip_if_unchanged = true })
         local failures_after = _cloud_consecutive_failures_for(plugin, book)
         local push_actually_failed = failures_before and failures_after
             and failures_after > failures_before
+        if _G.SYNCERY_DEBUG_LOG then
+            _G.SYNCERY_DEBUG_LOG.push_opened_books_book_result(
+                book, i, #books, ok, status, failures_before, failures_after, push_actually_failed)
+        end
         if not ok or status == "deferred" or push_actually_failed then
             table.insert(failed, book)
         else
@@ -521,6 +576,9 @@ local function pushOpenedBooks(plugin, info_fn, only_book)
         -- All pushes succeeded; clear .opened
         local fw = io.open(path, "wb")
         if fw then fw:close() end
+    end
+    if _G.SYNCERY_DEBUG_LOG then
+        _G.SYNCERY_DEBUG_LOG.push_opened_books_done(#succeeded, #failed, #remaining)
     end
     return succeeded
 end
@@ -911,24 +969,37 @@ end
 
 --- Constraints S/T (design), corrected during implementation: reuses the
 --- EXISTING unified dispatch (cloud/transport.lua's cloud_sync, reached
---- via orch:pull_book) with two new kind values
---- ("prefetch_progress"/"prefetch_annotations"), the exact same pattern
---- the existing "manifest" kind already demonstrates -- NOT a
---- hand-rolled SyncServiceAdapter construction, which the design's
---- earlier revisions assumed was necessary before this implementation
---- found otherwise. Bootstraps an empty envelope as the "local" side
---- (same safety reasoning as do_cloud_upload's own fresh-open-pull
---- bootstrap: an empty local map is documented, normal input to
---- Merge.three_way) -- the merge callback (registered in transport.lua)
---- reads the real downloaded content from income_file and places it into
---- cloud_staging/prefetch/ via the shared _validateAndPlace.
+--- via orch:pull_book), the exact same pattern the existing "manifest"
+--- kind already demonstrates -- NOT a hand-rolled SyncServiceAdapter
+--- construction, which the design's earlier revisions assumed was
+--- necessary before this implementation found otherwise. Bootstraps an
+--- empty envelope as the "local" side (same safety reasoning as
+--- do_cloud_upload's own fresh-open-pull bootstrap: an empty local map
+--- is documented, normal input to Merge.three_way) -- the merge callback
+--- (registered in transport.lua) reads the real downloaded content from
+--- income_file and places it into cloud_staging/prefetch/ via the
+--- shared _validateAndPlace.
+---
+--- BUGFIX: this originally passed a
+--- SEPARATE "prefetch_progress"/"prefetch_annotations" kind, reasoning
+--- (correctly) that _build_merge_callback needed a signal to route the
+--- result into cloud_staging/prefetch/ instead of canonical. But that
+--- same kind value ALSO determines the REMOTE cloud object name via
+--- Staging.cloud_name_for (cloud/transport.lua's _prepare, which runs
+--- BEFORE _build_merge_callback's own kind->real-kind translation) --
+--- so the fallback prefetch was silently reading from/writing to
+--- "syncery-prefetch_progress-{id}.json", a cloud object NO real push
+--- ever writes to, instead of the peer's actual "syncery-progress-
+--- {id}.json". It could never have found real peer data. Fixed: pass
+--- the REAL kind ("progress"/"annotations", matching what a genuine
+--- push writes), and signal the prefetch-vs-canonical routing via a
+--- SEPARATE is_prefetch flag on the payload instead of overloading kind.
 local function _prefetchViaFallback(plugin, orch, book_id, kind)
     local content = (kind == "progress")
         and ProgressStateStore.empty_envelope_json()
         or StateStore.empty_envelope_json()
-    local pull_kind = (kind == "progress") and "prefetch_progress" or "prefetch_annotations"
     orch:pull_book("__prefetch__", {
-        payload = { kind = pull_kind, book_id = book_id, content = content },
+        payload = { kind = kind, book_id = book_id, content = content, is_prefetch = true },
     }, function(results)
         -- Fire-and-forget from this call's point of view -- errors are
         -- already logged inside the merge callback / cloud_sync itself;
@@ -942,9 +1013,15 @@ PluginSync._prefetchViaFallback = _prefetchViaFallback
 function PluginSync.sync_all(plugin, opts)
     opts = opts or {}
     if plugin._sync_all_in_progress then
+        if _G.SYNCERY_DEBUG_LOG then
+            _G.SYNCERY_DEBUG_LOG.sync_all_entry(false, "already_in_progress")
+        end
         return
     end
     plugin._sync_all_in_progress = true
+    if _G.SYNCERY_DEBUG_LOG then
+        _G.SYNCERY_DEBUG_LOG.sync_all_entry(true, nil)
+    end
 
     local ok, err = pcall(function()
         if plugin.ui and plugin.ui.document then
@@ -1023,6 +1100,11 @@ function PluginSync.sync_all(plugin, opts)
                     end
                 end
             end
+            if _G.SYNCERY_DEBUG_LOG then
+                local ids = {}
+                for id in pairs(just_pushed_book_ids) do ids[#ids + 1] = id end
+                _G.SYNCERY_DEBUG_LOG.sync_all_phase1_done(#(just_pushed_files or {}), ids)
+            end
 
             -- Phase 2: Pull via Merkle manifest
             local Settings = require("syncery_settings")
@@ -1083,6 +1165,12 @@ function PluginSync.sync_all(plugin, opts)
                         orch:push_book("__manifest__", {
                             payload = { kind = "manifest", book_id = my_device, content = manifest_json }
                         }, { force = true })
+                    end
+                    if _G.SYNCERY_DEBUG_LOG then
+                        local file_count = 0
+                        for _ in pairs(my_manifest.files) do file_count = file_count + 1 end
+                        _G.SYNCERY_DEBUG_LOG.manifest_generated(
+                            "fallback", file_count, fb_files_hash, cached_our_hash, fb_skip_upload)
                     end
                     -- Record OUR hash now, independent of whether any peer
                     -- is found below: the peer loop's own write (further
@@ -1270,11 +1358,21 @@ function PluginSync.sync_all(plugin, opts)
                                 break
                             end
                             local ok, result = pcall(PluginSync.do_cloud_upload, plugin, { file = book.path, force_sync = true })
+                            if _G.SYNCERY_DEBUG_LOG then
+                                _G.SYNCERY_DEBUG_LOG.sync_changed_book_result(
+                                    book.id, book.path, i, #changed_books, ok, result)
+                            end
                             if result == "deferred" then return end
                         end
                     end
+                    if _G.SYNCERY_DEBUG_LOG then
+                        _G.SYNCERY_DEBUG_LOG.sync_all_phase2_summary(#changed)
+                    end
                     _sync_fallback(changed)
                 else
+                    if _G.SYNCERY_DEBUG_LOG then
+                        _G.SYNCERY_DEBUG_LOG.sync_all_phase2_summary(0)
+                    end
                     info_fn(_("Up to date."))
                 end
 
@@ -1325,6 +1423,12 @@ function PluginSync.sync_all(plugin, opts)
                 if not pl_skip_upload then
                     listM.uploadManifest(plugin, provider, server, my_manifest)
                 end
+                if _G.SYNCERY_DEBUG_LOG then
+                    local file_count = 0
+                    for _ in pairs(my_manifest.files) do file_count = file_count + 1 end
+                    _G.SYNCERY_DEBUG_LOG.manifest_generated(
+                        "cloud_storage_plus", file_count, pl_files_hash, cached_our_hash, pl_skip_upload)
+                end
                 -- Record OUR hash now, independent of whether any peer is
                 -- found below: the peer loop's own write (further down)
                 -- already overwrites this with the fuller
@@ -1350,6 +1454,9 @@ function PluginSync.sync_all(plugin, opts)
             -- 2b. List cloud directory for all manifest files
             local ok_list, entries = _listFolderShowingUnsupported(
                 G_reader_settings, provider, server.url, true)
+            if _G.SYNCERY_DEBUG_LOG then
+                _G.SYNCERY_DEBUG_LOG.list_folder_result(ok_list, entries and #entries or 0)
+            end
             if not ok_list or not entries then
                 return
             end
@@ -1376,6 +1483,9 @@ function PluginSync.sync_all(plugin, opts)
                         table.insert(candidate_ids, book_id)
                     end
                 end
+                if _G.SYNCERY_DEBUG_LOG then
+                    _G.SYNCERY_DEBUG_LOG.prefetch_candidates_found(#candidate_ids)
+                end
                 if #candidate_ids > 0 then
                     info_fn(string.format(
                         _("Checking %d never-opened book(s) for new data..."),
@@ -1394,13 +1504,21 @@ function PluginSync.sync_all(plugin, opts)
                         -- Constraint N: nil-safe comparison -- either
                         -- side may be nil (never staged yet, or the
                         -- listing entry lacks a size for some reason).
-                        if (not staged_size)
-                                or (staged_size and staged_size ~= entry.filesize) then
+                        local stale = (not staged_size)
+                                or (staged_size and staged_size ~= entry.filesize)
+                        if _G.SYNCERY_DEBUG_LOG then
+                            _G.SYNCERY_DEBUG_LOG.prefetch_staleness_check(
+                                book_id, kind, staged_size, entry.filesize, stale)
+                        end
+                        if stale then
                             info_fn(string.format(
                                 _("Prefetching book %d/%d (%s)..."),
                                 i, #candidate_ids, kind))
                             local ok_dl, err_dl = _downloadAndValidate(
                                 plugin, provider, server, book_id, kind)
+                            if _G.SYNCERY_DEBUG_LOG then
+                                _G.SYNCERY_DEBUG_LOG.prefetch_download_result(book_id, kind, ok_dl, err_dl)
+                            end
                             if not ok_dl then
                                 logger.warn("Syncery: prefetch download failed for",
                                     book_id, kind, err_dl)
@@ -1434,6 +1552,11 @@ function PluginSync.sync_all(plugin, opts)
                     break
                 end
                 local remote = listM.downloadManifest(plugin, provider, server, device_id)
+                if _G.SYNCERY_DEBUG_LOG then
+                    _G.SYNCERY_DEBUG_LOG.download_manifest_result(
+                        device_id, remote ~= nil, remote and remote.files
+                            and (function() local n=0 for _ in pairs(remote.files) do n=n+1 end return n end)() or 0)
+                end
                 if remote and remote.files and my_manifest and my_manifest.files then
                     local peer_keys = {}
                     for k in pairs(remote.files) do table.insert(peer_keys, k) end
@@ -1482,14 +1605,25 @@ function PluginSync.sync_all(plugin, opts)
                         for _, book_id in ipairs(remote_book_ids) do
                             local remote_hash = remote.files[book_id]
                             local my_hash = my_manifest.files[book_id]
+                            local decision
                             if just_pushed_book_ids[book_id] then
                                 -- Fix 2: already fully synced moments ago in
                                 -- Phase 1 of THIS SAME Sync Now.
+                                decision = "excluded_just_pushed"
                             elseif my_hash and my_hash ~= remote_hash then
                                 local path = listM.resolveBookPath(plugin, book_id)
                                 if path then
                                     table.insert(changed, {id = book_id, path = path})
+                                    decision = "changed"
+                                else
+                                    decision = "changed_but_no_local_path"
                                 end
+                            else
+                                decision = "unchanged"
+                            end
+                            if _G.SYNCERY_DEBUG_LOG then
+                                _G.SYNCERY_DEBUG_LOG.manifest_diff_book(
+                                    book_id, my_hash, remote_hash, decision)
                             end
                         end
                     end
@@ -1505,10 +1639,16 @@ function PluginSync.sync_all(plugin, opts)
                         break
                     end
                     local ok, result = pcall(PluginSync.do_cloud_upload, plugin, { file = book.path, force_sync = true })
+                    if _G.SYNCERY_DEBUG_LOG then
+                        _G.SYNCERY_DEBUG_LOG.sync_changed_book_result(book.id, book.path, i, total, ok, result)
+                    end
                     if result == "deferred" then return end
                 end
             end
 
+            if _G.SYNCERY_DEBUG_LOG then
+                _G.SYNCERY_DEBUG_LOG.sync_all_phase2_summary(total)
+            end
             if total > 0 then
                 sync_changed(changed)
             else
