@@ -349,8 +349,13 @@ function Adapter.make_annotation_sync_callback(opts)
                 income_env.render_settings or {}) or {},
         }
 
+        if _G.SYNCERY_DEBUG_LOG then
+            _G.SYNCERY_DEBUG_LOG.merge_callback_state(
+                "annotations", local_file, local_env, anc_env, income_env, merged)
+        end
+
         -- 5. Write merged back into local_file (what SyncService uploads).
-        local wok = json_store.write(local_file, merged)
+        local wok, wreason = json_store.write(local_file, merged)
         if not wok then
             log.warn("cloud merge: failed to write merged local — aborting")
             return false
@@ -360,12 +365,18 @@ function Adapter.make_annotation_sync_callback(opts)
         -- abort: we must NOT let SyncService advance the ancestor while the
         -- canonical file lags, or the next 3-way merge would read the lag as
         -- local deletions and wipe the just-merged content.
+        local cok, creason = true, "no_canonical_path"
         if canonical_path then
-            local cok = json_store.write(canonical_path, merged)
+            cok, creason = json_store.write(canonical_path, merged)
             if not cok then
                 log.warn("cloud merge: canonical reconcile write failed — aborting")
                 return false
             end
+        end
+
+        if _G.SYNCERY_DEBUG_LOG then
+            _G.SYNCERY_DEBUG_LOG.merge_callback_write(
+                "annotations", local_file, canonical_path, wreason, creason)
         end
 
         -- 7. Live-UI refresh hook (18.9.7) — best-effort, never fatal.
@@ -469,8 +480,13 @@ function Adapter.make_progress_sync_callback(opts)
                 income_state.entries or {}),
         }
 
+        if _G.SYNCERY_DEBUG_LOG then
+            _G.SYNCERY_DEBUG_LOG.merge_callback_state(
+                "progress", local_file, local_state, anc_state, income_state, merged)
+        end
+
         -- 5. Write merged back into local_file (what SyncService uploads).
-        local wok = json_store.write(local_file, merged)
+        local wok, wreason = json_store.write(local_file, merged)
         if not wok then
             log.warn("cloud progress merge: failed to write merged local — aborting")
             return false
@@ -478,12 +494,18 @@ function Adapter.make_progress_sync_callback(opts)
 
         -- 6. Reconcile into the canonical on-disk file (F2). Abort on failure
         -- so SyncService does NOT advance the ancestor while canonical lags.
+        local cok, creason = true, "no_canonical_path"
         if canonical_path then
-            local cok = json_store.write(canonical_path, merged)
+            cok, creason = json_store.write(canonical_path, merged)
             if not cok then
                 log.warn("cloud progress merge: canonical reconcile write failed — aborting")
                 return false
             end
+        end
+
+        if _G.SYNCERY_DEBUG_LOG then
+            _G.SYNCERY_DEBUG_LOG.merge_callback_write(
+                "progress", local_file, canonical_path, wreason, creason)
         end
 
         -- 7. Live-UI refresh hook (18.9.7) — best-effort, never fatal.
