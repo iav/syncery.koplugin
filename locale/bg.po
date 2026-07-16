@@ -1998,6 +1998,10 @@ msgstr "Качване %d/%d..."
 msgid "Use Syncery's cloud server"
 msgstr "Използвай облачния сървър на Синери"
 
+#: syncery_ui/menu/init.lua
+msgid "Verbose sync logging"
+msgstr "Подробно логване на синхронизацията"
+
 #: main.lua
 msgid "Vocab & Statistics not synced: enable the Cloud storage+ plugin."
 msgstr "Речник и Статистика не са синхронизирани: включи плъгина „Облачно хранилище+“."
@@ -2093,6 +2097,10 @@ msgstr "Думи за скриване на бележки…"
 #: syncery_ui/annotation_viewer/viewer_lifted.lua
 msgid "Words to hide highlighted text…"
 msgstr "Думи за скриване на маркиран текст…"
+
+#: syncery_ui/menu/init.lua
+msgid "Writes detailed sync events (push/pull decisions, merge results, jump/reload prompts) to debug.txt in the Syncery settings folder — for troubleshooting. Capped at roughly the last 1000 lines. Off by default; turn on only when investigating an issue, takes effect immediately, no restart needed."
+msgstr "Записва подробни събития по синхронизацията (push/pull решения, merge резултати, jump/reload подкани) в debug.txt в папката с настройки на Syncery — за отстраняване на проблеми. Ограничено до около последните 1000 реда. Изключено по подразбиране; включвай само когато разследваш проблем — влиза в сила веднага, без рестарт."
 
 #: syncery_ui/annotation_viewer/viewer_lifted.lua
 msgid "Yesterday"
