@@ -257,6 +257,10 @@ function Teardown.flush(plugin, ui_manager, util_now, logger, opts)
                 -- opened earlier in the session. Those stay queued for
                 -- the next full flush (interactive Sync Now, which DOES
                 -- have a Trapper dialog).
+                if _G.SYNCERY_DEBUG_LOG then
+                    _G.SYNCERY_DEBUG_LOG.teardown_push_opened_books(
+                        state.file, opts.destroying and "close" or "suspend")
+                end
                 PluginSync.pushOpenedBooks(plugin, nil, state.file)
             end
 
