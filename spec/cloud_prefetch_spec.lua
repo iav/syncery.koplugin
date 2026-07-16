@@ -3,7 +3,7 @@
 -- =============================================================================
 --
 -- Unit tests for Checkpoint 1 of the cloud prefetch design
--- the book_id safety gate, remote
+-- : the book_id safety gate, remote
 -- listing grouping, and validated-write primitives shared by both
 -- transport paths.
 -- =============================================================================
@@ -441,8 +441,14 @@ do
         "1234567890ABCDEF1234567890ABCDEF", "progress")
 
     h.assert_equal(#calls, 1, "exactly one pull_book call for one kind")
-    h.assert_equal(calls[1].payload.kind, "prefetch_progress",
-        "progress kind maps to prefetch_progress pull kind")
+    h.assert_equal(calls[1].payload.kind, "progress",
+        "BUGFIX: kind is now the REAL "
+        .. "\"progress\", matching the SAME remote cloud object a genuine "
+        .. "peer push writes to -- the old \"prefetch_progress\" kind "
+        .. "silently pointed at a cloud object no real push ever wrote to")
+    h.assert_true(calls[1].payload.is_prefetch == true,
+        "is_prefetch=true carries the prefetch-vs-canonical routing "
+        .. "signal instead of overloading the kind value")
     h.assert_equal(calls[1].payload.book_id, "1234567890ABCDEF1234567890ABCDEF",
         "book_id passed through unchanged")
     h.assert_true(type(calls[1].payload.content) == "string"
@@ -451,8 +457,10 @@ do
 
     PluginSync._prefetchViaFallback({ state_dir = "/tmp/" }, fake_orch,
         "1234567890ABCDEF1234567890ABCDEF", "annotations")
-    h.assert_equal(calls[2].payload.kind, "prefetch_annotations",
-        "annotations kind maps to prefetch_annotations pull kind")
+    h.assert_equal(calls[2].payload.kind, "annotations",
+        "annotations kind is passed through as the REAL remote kind too")
+    h.assert_true(calls[2].payload.is_prefetch == true,
+        "is_prefetch=true on the annotations call too")
 end
 
 
