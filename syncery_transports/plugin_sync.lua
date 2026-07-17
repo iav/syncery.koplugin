@@ -602,7 +602,7 @@ local function _isSafeBookId(book_id)
         and not book_id:match("[^%w%-_]")
 end
 
---- Constraint Q: group a Cloud Storage+ listing's entries by book_id and
+--- Constraint Q: Cloud Storage+ listing's entries by book_id and
 --- kind, reusing the exact recognition pattern generateManifest already
 --- uses when walking cloud_staging/ (cloud/list.lua:47) -- applied here to
 --- the remote listing instead, not reinvented.
@@ -795,11 +795,15 @@ PluginSync._ensure_parent_dir = _ensure_parent_dir
 --- path) -- moving staged remote content into an empty canonical slot
 --- reaches the same safe outcome one merge cycle earlier.
 function PluginSync.apply_staged_prefetch(plugin, book_id, book_file)
-    if not _isSafeBookId(book_id) then return end  -- Constraint X, defensive
-    if not (plugin and plugin._isFileTypeSynced
-            and plugin:_isFileTypeSynced(book_file)) then
-        return
+    local safe_id = _isSafeBookId(book_id)
+    local file_type_synced = plugin and plugin._isFileTypeSynced
+        and plugin:_isFileTypeSynced(book_file)
+    if _G.SYNCERY_DEBUG_LOG then
+        _G.SYNCERY_DEBUG_LOG.apply_staged_prefetch_entry(
+            book_id, book_file, safe_id, file_type_synced and true or false)
     end
+    if not safe_id then return end  -- Constraint X, defensive
+    if not file_type_synced then return end
 
     local prefetch_dir = plugin.state_dir .. "cloud_staging/prefetch/"
     local progress_src = prefetch_dir .. "syncery-progress-" .. book_id .. ".json"
@@ -814,9 +818,16 @@ function PluginSync.apply_staged_prefetch(plugin, book_id, book_file)
     -- Constraint M: shared_progress_path/shared_annotations_path can
     -- return nil -- guard explicitly before ever handing a possibly-nil
     -- value to lfs.attributes.
+    local progress_src_exists = lfs.attributes(progress_src) ~= nil
+    local progress_dst_exists = progress_dst and lfs.attributes(progress_dst) ~= nil
+    if _G.SYNCERY_DEBUG_LOG then
+        _G.SYNCERY_DEBUG_LOG.apply_staged_prefetch_kind_check(
+            book_id, "progress", plugin.sync_progress and true or false,
+            progress_dst ~= nil, progress_dst_exists, progress_src_exists)
+    end
     if plugin.sync_progress and progress_dst
-            and not lfs.attributes(progress_dst)
-            and lfs.attributes(progress_src) then
+            and not progress_dst_exists
+            and progress_src_exists then
         _ensure_parent_dir(progress_dst)
         local ok, err = _moveOrCopyDelete(progress_src, progress_dst)
         if not ok then
@@ -825,10 +836,18 @@ function PluginSync.apply_staged_prefetch(plugin, book_id, book_file)
             applied_progress = true
         end
     end
+    local annot_src_exists = lfs.attributes(annot_src) ~= nil
+    local annot_dst_exists = annot_dst and lfs.attributes(annot_dst) ~= nil
+    if _G.SYNCERY_DEBUG_LOG then
+        _G.SYNCERY_DEBUG_LOG.apply_staged_prefetch_kind_check(
+            book_id, "annotations",
+            (plugin.sync_annotations or plugin.sync_metadata or plugin.sync_render_settings) and true or false,
+            annot_dst ~= nil, annot_dst_exists, annot_src_exists)
+    end
     if (plugin.sync_annotations or plugin.sync_metadata or plugin.sync_render_settings)
             and annot_dst
-            and not lfs.attributes(annot_dst)
-            and lfs.attributes(annot_src) then
+            and not annot_dst_exists
+            and annot_src_exists then
         _ensure_parent_dir(annot_dst)
         local ok, err = _moveOrCopyDelete(annot_src, annot_dst)
         if not ok then
@@ -836,6 +855,10 @@ function PluginSync.apply_staged_prefetch(plugin, book_id, book_file)
         else
             applied_annotations = true
         end
+    end
+    if _G.SYNCERY_DEBUG_LOG then
+        _G.SYNCERY_DEBUG_LOG.apply_staged_prefetch_result(
+            book_id, applied_progress, applied_annotations)
     end
 
     -- BUGFIX (confirmed empirically via the two-device investigation
@@ -1461,7 +1484,7 @@ function PluginSync.sync_all(plugin, opts)
                 return
             end
 
-            -- 2b-prefetch. Remote-only books (never opened on this device) 
+            -- 2b-prefetch. Remote-only books (never opened on this device) --
             -- Reuses THIS SAME `entries`
             -- listing (Constraint O/Q) -- no second network round-trip.
             -- Constraint V: staged under prefetch/, never the flat top
