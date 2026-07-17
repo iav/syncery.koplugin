@@ -2701,6 +2701,16 @@ function Syncery:_syncBookViaOrchestrator(state, opts)
     if result.annotations_pulled and result.annotations_pulled > 0 then
         self._pending_ann_reload = result.annotations_pulled
     end
+    -- Mirror of the above for a genuinely just-discovered peer DELETION
+    -- (not an already-known tombstone carried forward -- see
+    -- SyncOrchestrator._count_removed_vs). Same reasoning: the live list
+    -- is never mutated mid-session, so a deletion is only visible at the
+    -- next open -- arm the SAME reload affordance so it, too, gets an
+    -- immediate "tap to see this now" invitation instead of silently
+    -- waiting for a future session to notice on its own.
+    if result.annotations_deleted and result.annotations_deleted > 0 then
+        self._pending_ann_deleted_reload = result.annotations_deleted
+    end
     -- Font & layout (render) settings are in the SAME boat: copt_* were written
     -- to doc_settings (+ live Configurable state) but NOT re-rendered in-session,
     -- so the change is only visible at the next open.  Arm the same reload
@@ -2794,11 +2804,15 @@ end
 --- pending change still arrives on the next ordinary close+open; the bar is only
 --- an early-delivery shortcut.  The text names exactly which section(s) changed.
 function Syncery:_maybeOfferReload()
-    local ann_count = self._pending_ann_reload
-    local render    = self._pending_render_reload
+    local ann_count     = self._pending_ann_reload
+    local deleted_count = self._pending_ann_deleted_reload
+    local render        = self._pending_render_reload
     self._pending_ann_reload = nil
+    self._pending_ann_deleted_reload = nil
     self._pending_render_reload = nil
-    local has_ann = ann_count ~= nil and ann_count > 0
+    local has_added   = ann_count ~= nil and ann_count > 0
+    local has_deleted = deleted_count ~= nil and deleted_count > 0
+    local has_ann = has_added or has_deleted
     if _G.SYNCERY_DEBUG_LOG then
         _G.SYNCERY_DEBUG_LOG.maybe_offer_reload(
             ann_count, render, has_ann,
@@ -2810,13 +2824,37 @@ function Syncery:_maybeOfferReload()
     -- staged and applies on next open, so skip the mid-session bar (issue #11).
     if not self.reload_prompt then return end
 
+    -- Every branch below is a COMPLETE, self-contained sentence -- never
+    -- concatenated fragments -- so each can be translated as a proper,
+    -- grammatical sentence in any language (Bulgarian included), not
+    -- glued-together pieces that could produce broken grammar.
     local text
-    if has_ann and render then
-        text = _("New annotations and font & layout from another device")
-    elseif has_ann then
+    if has_added and has_deleted and render then
+        text = string.format(
+            _("+%d -%d annotations and font & layout from another device"),
+            ann_count, deleted_count)
+    elseif has_added and has_deleted then
+        text = string.format(
+            _("+%d -%d annotations from another device"),
+            ann_count, deleted_count)
+    elseif has_added and render then
+        text = string.format(
+            _n("%d new annotation and font & layout from another device",
+               "%d new annotations and font & layout from another device", ann_count),
+            ann_count)
+    elseif has_deleted and render then
+        text = string.format(
+            _n("%d annotation deleted and font & layout from another device",
+               "%d annotations deleted and font & layout from another device", deleted_count),
+            deleted_count)
+    elseif has_added then
         text = string.format(
             _n("%d new annotation from another device",
                "%d new annotations from another device", ann_count), ann_count)
+    elseif has_deleted then
+        text = string.format(
+            _n("%d annotation deleted on another device",
+               "%d annotations deleted on another device", deleted_count), deleted_count)
     else
         text = _("New font & layout from another device")
     end
