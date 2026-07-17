@@ -262,6 +262,37 @@ function Teardown.flush(plugin, ui_manager, util_now, logger, opts)
                         state.file, opts.destroying and "close" or "suspend")
                 end
                 PluginSync.pushOpenedBooks(plugin, nil, state.file)
+
+                -- Step 3.5 (purely additive, Steps 1-3 above untouched):
+                -- re-run the SAME orchestrator merge Step 2 already called,
+                -- now that Step 3's cloud fetch may have just refreshed
+                -- canonical with a peer's update that arrived too recently
+                -- for Step 2's own (earlier) call to see. Proven via
+                -- spec/close_recheck_step4_proof_spec.lua (real
+                -- SyncOrchestrator.sync_book_with_providers, canonical
+                -- mutated between two calls) that re-running after a
+                -- canonical change correctly reflects it. Gated the same
+                -- way Step 2's own stash is (opts.destroying only) --
+                -- suspend/autosave never re-stage a list. If nothing
+                -- changed, this is a cheap, harmless re-computation
+                -- (Orchestrator.sync_book already runs unconditionally on
+                -- every autosave/jump/close today, so calling it once more
+                -- here adds no new class of cost). If Step 3 DID land
+                -- something new, this OVERWRITES Step 2's earlier (now
+                -- stale) stash with the fresher result, so it reaches
+                -- doc_settings within THIS close instead of waiting for a
+                -- future session.
+                if opts.destroying then
+                    local _had_data2, result2 = plugin:_syncBookViaOrchestrator(
+                        state, { trigger = "close_recheck" })
+                    if result2 and type(result2.delivery_annotations) == "table" then
+                        plugin._pending_anns = {
+                            annotations           = result2.delivery_annotations,
+                            adapt_highlight_style = plugin.adapt_highlight_style,
+                            device_id             = plugin.device_id,
+                        }
+                    end
+                end
             end
 
             -- Step 4: tell Syncthing to scan our file.  The orchestrator's
