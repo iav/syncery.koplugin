@@ -692,6 +692,61 @@ do
 end
 
 
+-- ----------------------------------------------------------------------------
+-- Step 3.5 (purely additive, right after Step 3): re-runs the orchestrator
+-- a SECOND time so a peer's update landed by Step 3's cloud fetch (too
+-- late for Step 2's own earlier call) still reaches doc_settings within
+-- THIS close. Proven conceptually in
+-- spec/close_recheck_step4_proof_spec.lua (real orchestrator, mutated
+-- canonical between two calls); this is the production-code-path
+-- regression test for Teardown.flush itself.
+-- ----------------------------------------------------------------------------
+
+do
+    local plugin = make_fake_plugin{}
+    plugin.use_cloud = true
+    plugin.adapt_highlight_style = true
+    plugin.device_id = "DEV1"
+
+    local calls = 0
+    -- First call (Step 2): canonical still stale, annotation alive.
+    -- Second call (Step 3.5): canonical refreshed by Step 3's cloud
+    -- fetch (simulated here -- pushOpenedBooks itself is stubbed below
+    -- and does not really touch canonical), annotation now tombstoned.
+    function plugin:_syncBookViaOrchestrator(_state, opts)
+        calls = calls + 1
+        if calls == 1 then
+            h.assert_equal(opts.trigger, "close", "first call is Step 2's own 'close' trigger")
+            return true, { delivery_annotations = { k1 = { text = "x", deleted = false } } }
+        else
+            h.assert_equal(opts.trigger, "close_recheck",
+                "second call uses a distinct 'close_recheck' trigger, not reusing 'close'")
+            return true, { delivery_annotations = { k1 = { text = "x", deleted = true } } }
+        end
+    end
+
+    local pushed = false
+    local PluginSync = require("syncery_transports.plugin_sync")
+    PluginSync.pushOpenedBooks = function(_p, _info, _only)
+        pushed = true
+        -- Real pushOpenedBooks would be where a peer's update actually
+        -- gets pulled into canonical; this fake doesn't need to touch
+        -- canonical itself since plugin:_syncBookViaOrchestrator above is
+        -- already stubbed to return the "post-fetch" result on call #2.
+    end
+
+    local ui = make_fake_uimgr()
+    Teardown.flush(plugin, ui, fixed_now, nil, { destroying = true })
+
+    h.assert_true(pushed, "Step 3 (pushOpenedBooks) still runs as before")
+    h.assert_equal(calls, 2,
+        "the orchestrator is called exactly twice: Step 2, then Step 3.5")
+    h.assert_true(plugin._pending_anns ~= nil and plugin._pending_anns.annotations.k1.deleted == true,
+        "Step 3.5 OVERWRITES Step 2's earlier (now-stale) stash with the "
+        .. "fresher, post-cloud-fetch result -- the tombstone reaches the "
+        .. "stash within THIS close, not a future session")
+end
+
 -- The terminal (destroying) Syncthing scan is FORCED and runs INLINE (before the
 -- Step 5 shutdown), so an offline autosave's pending retry can't make Step 5 drop
 -- the close-time scan.
