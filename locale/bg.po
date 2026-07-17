@@ -26,6 +26,18 @@ msgstr " (която и да е дума)"
 msgid " (phrase)"
 msgstr " (фраза)"
 
+#: main.lua
+msgid "%d annotation deleted and font & layout from another device"
+msgid_plural "%d annotations deleted and font & layout from another device"
+msgstr[0] "%d изтрита анотация и шрифт & оформление от друго устройство"
+msgstr[1] "%d изтрити анотации и шрифт & оформление от друго устройство"
+
+#: main.lua
+msgid "%d annotation deleted on another device"
+msgid_plural "%d annotations deleted on another device"
+msgstr[0] "%d изтрита анотация на друго устройство"
+msgstr[1] "%d изтрити анотации на друго устройство"
+
 #: syncery_migration/storage_mode.lua
 msgid "%d book already in the new location."
 msgid_plural "%d books already in the new location."
@@ -67,6 +79,12 @@ msgid "%d month"
 msgid_plural "%d months"
 msgstr[0] "%d месец"
 msgstr[1] "%d месеца"
+
+#: main.lua
+msgid "%d new annotation and font & layout from another device"
+msgid_plural "%d new annotations and font & layout from another device"
+msgstr[0] "%d нова анотация и шрифт & оформление от друго устройство"
+msgstr[1] "%d нови анотации и шрифт & оформление от друго устройство"
 
 #: main.lua
 msgid "%d new annotation from another device"
@@ -116,6 +134,14 @@ msgstr "(.stignore не е записан: %s)"
 #: syncery_ui/progress_browser/init.lua
 msgid "(sync conflict: merge pending)"
 msgstr "(sync-конфликт: предстои обединяване)"
+
+#: main.lua
+msgid "+%d -%d annotations and font & layout from another device"
+msgstr "+%d -%d анотации и шрифт & оформление от друго устройство"
+
+#: main.lua
+msgid "+%d -%d annotations from another device"
+msgstr "+%d -%d анотации от друго устройство"
 
 #: syncery_ui/jump_toast.lua
 msgid ": %s"
@@ -905,10 +931,6 @@ msgstr "Навигация"
 #: syncery_ui/menu/annotations_section.lua
 msgid "Never jump"
 msgstr "Никога не скачай"
-
-#: main.lua
-msgid "New annotations and font & layout from another device"
-msgstr "Нови анотации, шрифт и оформление от друго устройство"
 
 #: main.lua
 msgid "New font & layout from another device"
