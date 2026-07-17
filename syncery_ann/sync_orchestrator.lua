@@ -98,6 +98,7 @@ local function new_result()
         tombstones_compacted = 0,
         annotations_pulled  = 0,   -- new from remote
         annotations_pushed  = 0,   -- new from local
+        annotations_deleted = 0,   -- genuinely just-discovered peer deletion
 
         -- Metadata stats.
         metadata_applied    = {},  -- map of field-name -> true
@@ -277,6 +278,14 @@ function SyncOrchestrator.sync_book_with_providers(ui, book_file, options, provi
         merged_annotations, local_state.annotations, out_keys)
     result.annotations_pushed = SyncOrchestrator._count_added_vs(
         merged_annotations, remote_state.annotations)
+    -- Mirror of annotations_pulled, opposite direction: a genuinely
+    -- just-discovered peer DELETION (this device had it alive before,
+    -- the merge now shows it deleted) -- distinct from an already-known
+    -- tombstone carried forward from an earlier sync (excluded, see
+    -- _count_removed_vs's own comment). Drives the reload toast's
+    -- deletion-aware wording alongside annotations_pulled.
+    result.annotations_deleted = SyncOrchestrator._count_removed_vs(
+        merged_annotations, local_state.annotations, out_keys)
 
     -- ── 5. Compact old tombstones ───────────────────────────────────
     -- Tombstones older than the TTL get stripped to their minimal form
@@ -709,6 +718,37 @@ function SyncOrchestrator._count_added_vs(after, before, exclude)
                 if after_ts > before_ts then
                     count = count + 1
                 end
+            end
+        end
+    end
+    return count
+end
+
+
+--- Mirror of _count_added_vs, opposite direction: counts a key ONLY
+--- when THIS device previously had it ALIVE (in `before`, the local
+--- live list) and the merge now shows it `deleted`.  That is a
+--- GENUINELY just-discovered peer deletion -- not an already-known
+--- tombstone being carried forward from an earlier sync (a key that
+--- was ALREADY deleted in `before` is excluded by the same
+--- `not before_entry.deleted` guard `_count_added_vs` uses for the
+--- opposite direction), which would otherwise count again on EVERY
+--- subsequent sync forever -- the exact class of perpetual-toast bug
+--- `_count_added_vs`'s own comment documents for additions.  A key
+--- absent from `before` entirely (never delivered to this device) is
+--- also excluded: there is nothing THIS device's user had that is now
+--- disappearing, so it is not a deletion FROM THEIR view.
+---
+--- `exclude` (optional), same meaning as in _count_added_vs: drops keys
+--- that ride in the merged map but are not delivered to this device.
+function SyncOrchestrator._count_removed_vs(after, before, exclude)
+    local count = 0
+    for key, before_entry in pairs(before or {}) do
+        if not (exclude and exclude[key])
+                and before_entry and not before_entry.deleted then
+            local after_entry = (after or {})[key]
+            if after_entry and after_entry.deleted then
+                count = count + 1
             end
         end
     end
