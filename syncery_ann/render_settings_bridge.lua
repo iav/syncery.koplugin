@@ -324,6 +324,50 @@ function RenderSettingsBridge._update_live_state(ui, key, value)
 end
 
 
+--- Mirror-image of _update_live_state: read the CURRENT live effective
+--- value for a render key, rather than the raw (possibly never-saved)
+--- doc_settings entry.
+---
+--- BUGFIX: checking only
+--- doc_settings:readSetting(key) means a book this device has never
+--- saved/closed even once always reads nil, indistinguishable from "a
+--- peer's own untouched default" -- which made it impossible to tell
+--- that case apart from "a peer genuinely customized this, and I have
+--- never opened this book, so I have nothing to compare against but
+--- SHOULD still be told". Traced against KOReader source
+--- (frontend/configurable.lua Configurable:loadDefaults, frontend/apps/
+--- reader/modules/readerfont.lua ReaderFont:onReadSettings): both
+--- ui.document.configurable[cfg_key] and ui.font.font_face are ALWAYS
+--- populated with a real, concrete value the moment the document opens
+--- -- a per-book explicit save if one exists, else the user's GLOBAL
+--- preference, else KOReader's own hardcoded default -- regardless of
+--- whether THIS book has ever been saved before. Reading the live value
+--- as a fallback when doc_settings has nothing yet gives the TRUE
+--- "what would this device actually render with" signal even on a
+--- never-opened book.
+---
+--- @param ui table The ReaderUI.
+--- @param key string The doc_settings key ("font_face" or "copt_*").
+--- @return any|nil The live value, or nil if the live module is absent.
+function RenderSettingsBridge._read_live_state(ui, key)
+    if type(ui) ~= "table" then return nil end
+
+    if key == "font_face" then
+        if type(ui.font) == "table" then
+            return ui.font.font_face
+        end
+        return nil
+    end
+
+    local cfg_key = key:match("^copt_(.+)$")
+    if cfg_key and type(ui.document) == "table"
+            and type(ui.document.configurable) == "table" then
+        return ui.document.configurable[cfg_key]
+    end
+    return nil
+end
+
+
 
 --- @param ui table The ReaderUI.
 --- @param remote_block table|nil The per-field render block from remote.
@@ -351,10 +395,26 @@ function RenderSettingsBridge.apply_from_remote(ui, remote_block, toggles)
         if toggles[spec.toggle] then
             for _, key in ipairs(spec.keys) do
                 local remote_entry = remote_block[key]
+                local had_cached_entry = cached_state.fields[key] ~= nil
                 if RenderSettingsBridge._remote_entry_is_newer(
                         remote_entry, cached_state.fields[key]) then
                     local current = ui.doc_settings:readSetting(key)
-                    if not RenderSettingsBridge._values_equal(current, remote_entry.value) then
+                    local from_live_state = false
+                    if current == nil then
+                        -- No explicit doc_settings entry (this book has
+                        -- never been saved/closed on this device) --
+                        -- fall back to the LIVE effective value KOReader
+                        -- is actually rendering with right now (a global
+                        -- preference or its own hardcoded default; see
+                        -- _read_live_state), so a genuine peer
+                        -- customization can still be told apart from a
+                        -- peer's own untouched default even on a
+                        -- never-opened book.
+                        current = RenderSettingsBridge._read_live_state(ui, key)
+                        from_live_state = current ~= nil
+                    end
+                    local values_equal = RenderSettingsBridge._values_equal(current, remote_entry.value)
+                    if not values_equal then
                         ui.doc_settings:saveSetting(key, remote_entry.value)
                         -- doc_settings alone is not enough: while the book is
                         -- open, KOReader's ReaderConfig/ReaderFont onSaveSettings
@@ -363,7 +423,24 @@ function RenderSettingsBridge.apply_from_remote(ui, remote_block, toggles)
                         -- next open.  Update that live state too so the save
                         -- stays consistent and the value survives to next open.
                         RenderSettingsBridge._update_live_state(ui, key, remote_entry.value)
+                        -- BUGFIX: "any_change"
+                        -- now reflects a genuine difference from what this
+                        -- device would ACTUALLY render (explicit doc_settings
+                        -- value, or the live effective value as fallback
+                        -- above) -- not merely "doc_settings had nothing
+                        -- saved yet". A peer's own untouched default
+                        -- (matching this device's own live default) no
+                        -- longer counts as a change; a peer's genuine
+                        -- customization does, even on a never-opened book.
                         any_change = true
+                    end
+                    -- Debug instrumentation (stable call site; logic in the
+                    -- optional external hook -- see _log.lua). No-op unless
+                    -- that file is present and populates the global.
+                    if _G.SYNCERY_DEBUG_LOG then
+                        _G.SYNCERY_DEBUG_LOG.render_field(
+                            key, had_cached_entry, current, remote_entry.value,
+                            values_equal, remote_entry.datetime_updated, from_live_state)
                     end
                     -- Snapshot what we just adopted (even if the value
                     -- matched), so the cached timestamp advances and the

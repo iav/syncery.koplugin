@@ -137,6 +137,15 @@ function Menu.buildAdvancedMenu(plugin)
             sub_item_table_func = function() return MaintSec.menuThisDevice(plugin) end,
         },
         MaintSec.copyDiagnosticInfoItem(plugin),
+        H.makeBoolToggle(plugin, "debug_logging", "syncery_debug_logging",
+            _("Verbose sync logging"),
+            _("Writes detailed sync events (push/pull decisions, merge "
+              .. "results, jump/reload prompts) to debug.txt in the "
+              .. "Syncery settings folder — for troubleshooting. Capped "
+              .. "at roughly the last 1000 lines. Off by default; turn "
+              .. "on only when investigating an issue, takes effect "
+              .. "immediately, no restart needed."),
+            nil, function(v) require("syncery_debuglog").set_enabled(v) end),
         MaintSec.bookDataSaveIntervalItem(plugin),
         H.makeBoolToggle(plugin, "reload_prompt", "syncery_reload_prompt",
             _("Prompt to reload for synced content"),

@@ -36,6 +36,7 @@ local ProgressStateStore = require("syncery_progress/state_store")
 local ProgressConflictResolver = require("syncery_progress/conflict_resolver")
 local ProgressBridge     = require("syncery_progress/progress_bridge")
 local StatusUI           = require("syncery_ui/status_ui/init")
+local PluginSync         = require("syncery_transports/plugin_sync")
 
 local ProgressBrowser = {}
 
@@ -329,6 +330,30 @@ function ProgressBrowser.show(plugin)
     -- annotation enumeration; a cancellable progress wrapper is a later
     -- refinement for very large libraries.)
     local books = ProgressEnum.enumerate()
+
+    -- Cloud prefetch visibility (docs/CLOUD_PREFETCH_DESIGN.md, section
+    -- 4.4): aggregate.lua's own my_percent==nil -> state="behind" branch
+    -- already handles "no local entry, peer entries exist" as a
+    -- first-class case (confirmed by reading aggregate.lua directly, not
+    -- assumed) -- these rows need no special rendering, only feeding in.
+    -- book_path stays nil; ProgressBrowser's own "Cannot find book path"
+    -- guard on the jump action already covers a book never opened here.
+    do
+        local ok_enum, by_book = pcall(PluginSync.enumerate_prefetch_staging, plugin)
+        if ok_enum and by_book then
+            for book_id, kinds in pairs(by_book) do
+                if kinds.progress then
+                    local title = PluginSync.extract_title_hint(kinds.progress)
+                    books[#books + 1] = {
+                        title         = title or book_id,
+                        book_path     = nil,
+                        progress_path = kinds.progress,
+                        filename      = nil,
+                    }
+                end
+            end
+        end
+    end
 
     local rows = {}
     for _, b in ipairs(books) do

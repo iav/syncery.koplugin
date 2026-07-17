@@ -118,6 +118,17 @@ local DataStorage = require("datastorage")             -- Tier 2: derive the plu
 local PluginSync = require("syncery_transports/plugin_sync")
 local CloudStorageProvider = require("syncery_transports/cloud/providers/cloudstorage_provider")
 
+-- Verbose sync logging: ALWAYS loaded (so `_G.SYNCERY_DEBUG_LOG` is always
+-- a populated table and every guard call-site below always takes its
+-- branch), but silent by default. The "Verbose sync logging" menu toggle
+-- (Advanced, under "Copy diagnostic info") calls
+-- syncery_debuglog.set_enabled(bool) to turn actual logging on/off at
+-- runtime, no restart needed -- see syncery_debuglog.lua's own docstring.
+-- This line itself should never need editing again; only
+-- syncery_debuglog.lua's own contents should change across future
+-- debugging iterations.
+require("syncery_debuglog")
+
 -- ----------------------------------------------------------------------------
 -- Periodic DB-sync timer (Statistics / Vocabulary Builder), opt-in via the
 -- DB-sync master toggle.  MODULE-LEVEL (not an instance method) so the schedule
@@ -828,6 +839,10 @@ function Syncery:init()
         -- Mid-session [Reload] prompt for a peer's annotations / font & layout:
         -- default ON (d0nizam, issue #11). OFF = silent, lands on next open.
         self.reload_prompt         = read_bool("syncery_reload_prompt",          true)
+        -- Verbose sync logging to debug.txt (Advanced, under "Copy
+        -- diagnostic info"): default OFF, an opt-in troubleshooting aid.
+        self.debug_logging         = read_bool("syncery_debug_logging",         false)
+        require("syncery_debuglog").set_enabled(self.debug_logging)
         self.sync_metadata         = read_bool("syncery_sync_metadata",          false)
         self.sync_status           = read_bool("syncery_sync_status",            true)
         self.sync_rating           = read_bool("syncery_sync_rating",            true)
@@ -972,14 +987,24 @@ function Syncery:init()
             -- The session's pull has landed: the lost-rerun recovery in
             -- onNetworkConnected is no longer needed.
             self._session_pull_pending = nil
+            if _G.SYNCERY_DEBUG_LOG then
+                _G.SYNCERY_DEBUG_LOG.on_reconciled_fired()
+            end
             local tries = 0
             local function post_pull_check()
                 if self.destroyed then return end
                 if (self.is_saving or self.sync_state == "syncing"
                         or self._active_sync_box) and tries < 30 then
                     tries = tries + 1
+                    if _G.SYNCERY_DEBUG_LOG then
+                        _G.SYNCERY_DEBUG_LOG.post_pull_check_retry(
+                            tries, self.is_saving, self.sync_state, self._active_sync_box ~= nil)
+                    end
                     self:_schedule("_post_pull_check", 2.0, post_pull_check)
                     return
+                end
+                if _G.SYNCERY_DEBUG_LOG then
+                    _G.SYNCERY_DEBUG_LOG.post_pull_check_proceeding(tries)
                 end
                 self:checkRemote()
             end
@@ -1380,6 +1405,18 @@ function Syncery:onReaderReady()
 
         local state = self:getCurrentState()
         if state then
+            -- Cloud prefetch apply (docs/CLOUD_PREFETCH_DESIGN.md): move any
+            -- staged remote-only content into canonical storage now that
+            -- book_file is known. Read the already-computed
+            -- partial_md5_checksum directly rather than recomputing it --
+            -- readerui.lua's own caching (:497-500) runs before ReaderReady
+            -- fires (:517), so it is already populated here, in memory,
+            -- no disk read needed.
+            local book_id = self.ui.doc_settings
+                and self.ui.doc_settings:readSetting("partial_md5_checksum")
+            if book_id and state.file then
+                PluginSync.apply_staged_prefetch(self, book_id, state.file)
+            end
             -- Surface the silent cross-device-sync trap.  If building this
             -- book's id had to fall back to a basename hash (no cached
             -- partial_md5_checksum and no live partialMD5), the id differs
@@ -1519,6 +1556,9 @@ function Syncery:onReaderReady()
         if pull_expected then
             self:_schedule("_open_cloud_pull", 2.5, function()
                 local s = self:getCurrentState()
+                if _G.SYNCERY_DEBUG_LOG then
+                    _G.SYNCERY_DEBUG_LOG.scheduled_open_cloud_pull_fired(s and s.file)
+                end
                 if s then self:_doCloudUpload(s) end
             end)
             -- No-op when online; offline + toggle on -> raise Wi-Fi, rerun.
@@ -2220,11 +2260,11 @@ function Syncery:_writeSave(state, now, silent, trigger)
     -- Carry the genuine last-read time onto the book file's access time, so
     -- KOReader's "last read date" sort reflects real reading -- the newest
     -- position-move across all devices -- rather than the wall-clock moment
-    -- this sync ran.  A sync is not reading; neither is the document reopen a
+    -- this sync ran. A sync is not reading; neither is the document reopen a
     -- post-sync reload performs (which KOReader would otherwise stamp as a
-    -- fresh open).  merged_state carries every device's move-timestamp, so
+    -- fresh open). merged_state carries every device's move-timestamp, so
     -- this both preserves our own last-read and pulls a peer's newer read
-    -- forward.  See Util.newest_read_time / Util.stamp_read_time.
+    -- forward. See Util.newest_read_time / Util.stamp_read_time.
     local read_ts = Util.newest_read_time(sync_result.merged_state)
     if read_ts then
         Util.stamp_read_time(state.file, read_ts)
@@ -2287,6 +2327,10 @@ function Syncery:_save(opts)
         -- user opted out of syncing.  Progress has its own path below,
         -- so this gate does not touch it.  (The any-on case is unchanged
         -- — e.g. metadata-on already drives the orchestrator today.)
+        if _G.SYNCERY_DEBUG_LOG then
+            _G.SYNCERY_DEBUG_LOG.save_orchestrator_gate(
+                state.file, opts.trigger, self.sync_annotations, self.sync_metadata, self.sync_render_settings)
+        end
         if self.sync_annotations or self.sync_metadata or self.sync_render_settings then
             self:_syncBookViaOrchestrator(state, { trigger = opts.trigger or "save" })
         end
@@ -2595,6 +2639,10 @@ function Syncery:_syncBookViaOrchestrator(state, opts)
         tombstone_ttl_days    = self.tombstone_ttl_days,
     })
 
+    if _G.SYNCERY_DEBUG_LOG then
+        _G.SYNCERY_DEBUG_LOG.orchestrator_result(state.file, opts.trigger, result)
+    end
+
     -- Journal the merge event.  This happens for EVERY outcome —
     -- merged, no-op, skipped (empty), or failed — BEFORE any of the
     -- early returns below, because a journal that only records
@@ -2652,6 +2700,16 @@ function Syncery:_syncBookViaOrchestrator(state, opts)
     -- delivered on the next open -- which the [Reload] button triggers.
     if result.annotations_pulled and result.annotations_pulled > 0 then
         self._pending_ann_reload = result.annotations_pulled
+    end
+    -- Mirror of the above for a genuinely just-discovered peer DELETION
+    -- (not an already-known tombstone carried forward -- see
+    -- SyncOrchestrator._count_removed_vs). Same reasoning: the live list
+    -- is never mutated mid-session, so a deletion is only visible at the
+    -- next open -- arm the SAME reload affordance so it, too, gets an
+    -- immediate "tap to see this now" invitation instead of silently
+    -- waiting for a future session to notice on its own.
+    if result.annotations_deleted and result.annotations_deleted > 0 then
+        self._pending_ann_deleted_reload = result.annotations_deleted
     end
     -- Font & layout (render) settings are in the SAME boat: copt_* were written
     -- to doc_settings (+ live Configurable state) but NOT re-rendered in-session,
@@ -2746,24 +2804,57 @@ end
 --- pending change still arrives on the next ordinary close+open; the bar is only
 --- an early-delivery shortcut.  The text names exactly which section(s) changed.
 function Syncery:_maybeOfferReload()
-    local ann_count = self._pending_ann_reload
-    local render    = self._pending_render_reload
+    local ann_count     = self._pending_ann_reload
+    local deleted_count = self._pending_ann_deleted_reload
+    local render        = self._pending_render_reload
     self._pending_ann_reload = nil
+    self._pending_ann_deleted_reload = nil
     self._pending_render_reload = nil
-    local has_ann = ann_count ~= nil and ann_count > 0
+    local has_added   = ann_count ~= nil and ann_count > 0
+    local has_deleted = deleted_count ~= nil and deleted_count > 0
+    local has_ann = has_added or has_deleted
+    if _G.SYNCERY_DEBUG_LOG then
+        _G.SYNCERY_DEBUG_LOG.maybe_offer_reload(
+            ann_count, render, has_ann,
+            self.ui and self.ui.reloadDocument ~= nil, self.reload_prompt)
+    end
     if not has_ann and not render then return end
     if not (self.ui and self.ui.reloadDocument) then return end
     -- Opt-out (Advanced, default ON).  OFF = silent: merged content is already
     -- staged and applies on next open, so skip the mid-session bar (issue #11).
     if not self.reload_prompt then return end
 
+    -- Every branch below is a COMPLETE, self-contained sentence -- never
+    -- concatenated fragments -- so each can be translated as a proper,
+    -- grammatical sentence in any language (Bulgarian included), not
+    -- glued-together pieces that could produce broken grammar.
     local text
-    if has_ann and render then
-        text = _("New annotations and font & layout from another device")
-    elseif has_ann then
+    if has_added and has_deleted and render then
+        text = string.format(
+            _("+%d -%d annotations and font & layout from another device"),
+            ann_count, deleted_count)
+    elseif has_added and has_deleted then
+        text = string.format(
+            _("+%d -%d annotations from another device"),
+            ann_count, deleted_count)
+    elseif has_added and render then
+        text = string.format(
+            _n("%d new annotation and font & layout from another device",
+               "%d new annotations and font & layout from another device", ann_count),
+            ann_count)
+    elseif has_deleted and render then
+        text = string.format(
+            _n("%d annotation deleted and font & layout from another device",
+               "%d annotations deleted and font & layout from another device", deleted_count),
+            deleted_count)
+    elseif has_added then
         text = string.format(
             _n("%d new annotation from another device",
                "%d new annotations from another device", ann_count), ann_count)
+    elseif has_deleted then
+        text = string.format(
+            _n("%d annotation deleted on another device",
+               "%d annotations deleted on another device", deleted_count), deleted_count)
     else
         text = _("New font & layout from another device")
     end
@@ -2789,6 +2880,9 @@ function Syncery:_maybeOfferReload()
     -- freely (e.g. [Jump] adopts the position with no reopen, then [Reload]).
     -- ActionBar.show self-degrades on non-touch to a focusable, auto-dismissing
     -- dialog with [Reload] focused (the touch-zone button is unreachable there).
+    if _G.SYNCERY_DEBUG_LOG then
+        _G.SYNCERY_DEBUG_LOG.reload_toast_shown(text)
+    end
     ActionBar.show(self.ui, {
         text = text,
         button_label = _("Reload"),
@@ -2920,6 +3014,10 @@ function Syncery:checkRemote()
     -- open/resume to pull those sections.  (_save runs the orchestrator
     -- unconditionally during reading, so this only closed the open-moment
     -- pull gap; broadening makes the gate match the envelope contents.)
+    if _G.SYNCERY_DEBUG_LOG then
+        _G.SYNCERY_DEBUG_LOG.mtime_gate_toggle_check(
+            state.file, self.sync_annotations, self.sync_metadata, self.sync_render_settings)
+    end
     if self.sync_annotations or self.sync_metadata or self.sync_render_settings then
         local ann_path  = AnnPaths.shared_annotations_path(state.file)
         local ann_mtime = (ann_path and Util.file_mtime(ann_path)) or 0
@@ -2970,6 +3068,9 @@ function Syncery:checkRemote()
         handoff = _pending_jump_handoff
         _pending_jump_handoff = nil  -- single-shot
     end
+    if _G.SYNCERY_DEBUG_LOG then
+        _G.SYNCERY_DEBUG_LOG.reload_handoff_check(state.file, handoff)
+    end
     if handoff then
         local entry = fresh[handoff.device_id]
         if entry and JumpPolicy.should_prompt(
@@ -2995,6 +3096,9 @@ function Syncery:checkRemote()
                     self._shown_jump = nil
                 end,
             }
+            if _G.SYNCERY_DEBUG_LOG then
+                _G.SYNCERY_DEBUG_LOG.jump_shown(state.file, "handoff", hd_id, shown)
+            end
             if shown then
                 self._shown_jump = { file = state.file, device_id = hd_id }
             end
@@ -3017,6 +3121,12 @@ function Syncery:checkRemote()
     local best, best_device_id = JumpPolicy.pick_jump_target(
         fresh, self.device_id, session_baseline)
 
+    -- Debug instrumentation (stable call site; logic in the optional
+    -- external hook -- see _log.lua). No-op unless that file is present.
+    if _G.SYNCERY_DEBUG_LOG then
+        _G.SYNCERY_DEBUG_LOG.jump_target(state.file, fresh, best, best_device_id, session_baseline)
+    end
+
     if not best then
         -- No forward jump this tick -- offer the annotation reload instead.
         self:_maybeOfferReload()
@@ -3033,9 +3143,14 @@ function Syncery:checkRemote()
     -- DEVICE, by revision — not by comparing our own save-count against a
     -- remote's) AND a substantive percent/xpath delta.
     local page_delta = self:_resolveRemotePageDelta(state, best)
-    if not JumpPolicy.should_prompt(
+    local prompt_ok = JumpPolicy.should_prompt(
             best, best_device_id, self.acked_remote_revs,
-            state.percent, state.xpath, page_delta) then
+            state.percent, state.xpath, page_delta)
+    if _G.SYNCERY_DEBUG_LOG then
+        _G.SYNCERY_DEBUG_LOG.checkRemote_step(
+            "should_prompt", state.file, best_device_id, page_delta, prompt_ok)
+    end
+    if not prompt_ok then
         -- Jump suppressed (already acked / no substantive delta) -- offer the
         -- annotation reload instead.
         self:_maybeOfferReload()
@@ -3047,6 +3162,11 @@ function Syncery:checkRemote()
     -- differs) but jumping there moves nothing -- and under auto-accept two
     -- same-page devices jerk each other in a loop (see _jumpChangesPage).  The
     -- peer's annotation is still delivered via the reload offer.
+    if _G.SYNCERY_DEBUG_LOG then
+        _G.SYNCERY_DEBUG_LOG.checkRemote_step(
+            "jump_changes_page", state.file, best_device_id, nil,
+            self:_jumpChangesPage(state, best))
+    end
     if not self:_jumpChangesPage(state, best) then
         self:_maybeOfferReload()
         return
@@ -3080,6 +3200,9 @@ function Syncery:checkRemote()
             self._shown_jump = nil  -- dismissed (timeout / [✕]): do not re-offer
         end,
     }
+    if _G.SYNCERY_DEBUG_LOG then
+        _G.SYNCERY_DEBUG_LOG.jump_shown(state.file, "normal", best_device_id, jump_shown)
+    end
 
     -- Capture the showing jump for the reload handoff: if [Reload] is tapped
     -- while this bar is still up, _maybeOfferReload's handler stashes this so
@@ -3109,8 +3232,14 @@ end
 -- Event Hooks
 -- ============================================================================
 
-function Syncery:onPageUpdate() self:scheduleAutoSave() end
-function Syncery:onPosUpdate()  self:scheduleAutoSave() end
+function Syncery:onPageUpdate()
+    if _G.SYNCERY_DEBUG_LOG then _G.SYNCERY_DEBUG_LOG.page_turn_tally("page") end
+    self:scheduleAutoSave()
+end
+function Syncery:onPosUpdate()
+    if _G.SYNCERY_DEBUG_LOG then _G.SYNCERY_DEBUG_LOG.page_turn_tally("pos") end
+    self:scheduleAutoSave()
+end
 
 -- ============================================================================
 -- Lifecycle event handlers (delegated to syncery_lifecycle)
@@ -3534,7 +3663,11 @@ function Syncery:_scheduleCloudUpload(state)
 end
 
 function Syncery:_doCloudUpload(state)
-    return PluginSync.do_cloud_upload(self, state)
+    local result = PluginSync.do_cloud_upload(self, state)
+    if _G.SYNCERY_DEBUG_LOG then
+        _G.SYNCERY_DEBUG_LOG.do_cloud_upload_result(state and state.file, result)
+    end
+    return result
 end
 
 

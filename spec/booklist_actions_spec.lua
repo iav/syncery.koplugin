@@ -104,6 +104,25 @@ end
 
 
 -- ---------------------------------------------------------------------------
+-- build_action_rows — is_inbox_only branch (docs/CLOUD_PREFETCH_DESIGN.md,
+-- section 4.4): a prefetch-pending row must get a distinct, smaller action
+-- set -- no Reset/Remove/Migrate, since none of those assume canonical
+-- data exists yet.
+-- ---------------------------------------------------------------------------
+
+do
+    local rows = Actions.build_action_rows(make_plugin(),
+        { display_name = "Y", is_inbox_only = true, book_id = "ABCDEF" })
+    h.assert_equal(#rows, 1,
+        "is_inbox_only: exactly one action row, not the normal three")
+    h.assert_true(type(rows[1].callback) == "function",
+        "is_inbox_only: the single row has a callback")
+    h.assert_true(rows[1].text:match("[Cc]ache") ~= nil,
+        "is_inbox_only: the row's label mentions the cache, not reset/remove/migrate")
+end
+
+
+-- ---------------------------------------------------------------------------
 -- Row 1 confirms before resetting (parity with row 2; it clears this device's
 -- progress + annotations, so it must ask first rather than fire on tap).
 -- ---------------------------------------------------------------------------

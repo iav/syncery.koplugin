@@ -45,6 +45,7 @@ local _        = I18n.translate
 -- below iterate with pairs and stamp datetime_updated — mirroring the in-book
 -- reset in per_book_section.lua.  AnnTimeFormat.now() == os.date("%Y-%m-%d %H:%M:%S").
 local AnnTimeFormat = require("syncery_ann/time_format")
+local PluginSync = require("syncery_transports/plugin_sync")
 
 
 local Actions = {}
@@ -216,7 +217,40 @@ end
 -- ============================================================================
 
 
+--- Inbox-only rows (docs/CLOUD_PREFETCH_DESIGN.md, section 4.4): a book
+--- cached in cloud_staging/prefetch/, never opened on this device. No
+--- "Reset"/"Remove"/"Migrate" -- those assume canonical data that does
+--- not exist yet. The only meaningful action here is a user-initiated
+--- cache clear -- not a GC mechanism (apply-at-open already consumes
+--- these files on its own for any book that DOES get opened), purely a
+--- way to discard a book the user has decided they will not read.
+local function _build_inbox_only_action_rows(plugin, book)
+    return {
+        {
+            text = _("Clear this book from the prefetch cache"),
+            callback = function()
+                UIManager:show(ConfirmBox:new{
+                    text = _("Remove the cached, not-yet-applied data for this "
+                             .. "book? It will be re-downloaded on the next Sync "
+                             .. "Now if it is still remote-only, or applied "
+                             .. "normally if you open it before then."),
+                    ok_text = _("Clear"),
+                    ok_callback = function()
+                        local prefetch_dir = plugin.state_dir .. "cloud_staging/prefetch/"
+                        os.remove(prefetch_dir .. "syncery-progress-" .. book.book_id .. ".json")
+                        os.remove(prefetch_dir .. "syncery-annotations-" .. book.book_id .. ".json")
+                        UIManager:show(InfoMessage:new{ text = _("Cleared."), timeout = 2 })
+                    end,
+                })
+            end,
+        },
+    }
+end
+
 function Actions.build_action_rows(plugin, book)
+    if book.is_inbox_only then
+        return _build_inbox_only_action_rows(plugin, book)
+    end
     return {
         {
             text = _("Reset my Syncery data for this book"),

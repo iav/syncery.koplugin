@@ -190,10 +190,40 @@ do
     end
     h.assert_true(adv_has("Copy diagnostic info"),
         "buildAdvancedMenu: 'Copy diagnostic info' is a direct row (Phase 4)")
+    h.assert_true(adv_has("Verbose sync logging"),
+        "buildAdvancedMenu: 'Verbose sync logging' toggle sits directly "
+        .. "under 'Copy diagnostic info'")
     h.assert_true(adv_has("Book data save interval"),
         "buildAdvancedMenu: 'Book data save interval' is a direct row (Phase 4)")
     h.assert_true(not adv_has("Diagnostic windows"),
         "buildAdvancedMenu: the old 'Diagnostic windows' submenu is gone (Phase 4)")
+
+    -- Behavioural check: the toggle flips plugin.debug_logging AND calls
+    -- syncery_debuglog.set_enabled(v) via after_set, so the change takes
+    -- effect immediately -- no restart needed.
+    local function find_row(sub)
+        for _, row in ipairs(adv) do
+            local lbl = row.text or (row.text_func and row.text_func())
+            if lbl and lbl:find(sub, 1, true) then return row end
+        end
+        return nil
+    end
+    local debug_row = find_row("Verbose sync logging")
+    h.assert_true(debug_row ~= nil, "the debug logging row is found for behavioural checks")
+    if debug_row then
+        h.assert_false(debug_row.checked_func(),
+            "debug logging starts unchecked (plugin.debug_logging is falsy on this fake)")
+        debug_row.callback()
+        h.assert_true(plugin.debug_logging == true,
+            "toggling the row flips plugin.debug_logging to true")
+        h.assert_true(require("syncery_debuglog").is_enabled(),
+            "the after_set hook called syncery_debuglog.set_enabled(true) immediately")
+        debug_row.callback()
+        h.assert_true(plugin.debug_logging == false,
+            "toggling again flips it back off")
+        h.assert_false(require("syncery_debuglog").is_enabled(),
+            "and set_enabled(false) took effect too")
+    end
 end
 
 

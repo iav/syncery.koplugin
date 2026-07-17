@@ -168,6 +168,33 @@ local function stub_md5(s)
     return string.format("%032x", n)
 end
 
+--- Real ffi/sha2's md5 supports BOTH calling conventions production code
+--- uses: a direct one-shot call `sha2.md5(data)` returning the hash
+--- immediately, AND an accumulator factory `sha2.md5()` (no args)
+--- returning a context callable multiple times to feed data, then
+--- callable with no args to finalize. generateManifest's per-book and
+--- peer-manifest hashing, and do_cloud_upload's Fix-4 content-hash push
+--- cache, use the accumulator shape; other call sites use the one-shot
+--- shape directly. stub_md5 above only supports one-shot -- this wraps
+--- it to support both, matching whichever shape a given call site
+--- actually needs, so code exercising EITHER shape under this test
+--- harness behaves like production instead of raising a silent error a
+--- surrounding pcall (e.g. pushOpenedBooks' per-book guard) swallows
+--- with no visible signal.
+local function stub_md5_accumulator(immediate_arg)
+    if immediate_arg ~= nil then
+        return stub_md5(tostring(immediate_arg))
+    end
+    local buf = {}
+    return function(data)
+        if data == nil then
+            return stub_md5(table.concat(buf))
+        end
+        buf[#buf + 1] = tostring(data)
+        return nil
+    end
+end
+
 
 --- Install stubs into package.loaded.  Call this BEFORE require-ing
 --- any syncery_ann module.
@@ -189,7 +216,7 @@ function helpers.setup(test_root)
         getSettingsDir = function() return test_root end,
     }
 
-    package.loaded["ffi/sha2"] = { md5 = stub_md5 }
+    package.loaded["ffi/sha2"] = { md5 = stub_md5_accumulator }
 
     package.loaded["docsettings"] = {
         open = function(_self, book_path)

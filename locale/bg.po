@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: Syncery 1.1.2\n"
+"Project-Id-Version: Syncery 1.2.0\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-06-01 06:59+0000\n"
 "PO-Revision-Date: 2026-07-11 15:54+0300\n"
@@ -25,6 +25,18 @@ msgstr " (която и да е дума)"
 #: syncery_ui/annotation_viewer/viewer_lifted.lua
 msgid " (phrase)"
 msgstr " (фраза)"
+
+#: main.lua
+msgid "%d annotation deleted and font & layout from another device"
+msgid_plural "%d annotations deleted and font & layout from another device"
+msgstr[0] "%d изтрита анотация и шрифт & оформление от друго устройство"
+msgstr[1] "%d изтрити анотации и шрифт & оформление от друго устройство"
+
+#: main.lua
+msgid "%d annotation deleted on another device"
+msgid_plural "%d annotations deleted on another device"
+msgstr[0] "%d изтрита анотация на друго устройство"
+msgstr[1] "%d изтрити анотации на друго устройство"
 
 #: syncery_migration/storage_mode.lua
 msgid "%d book already in the new location."
@@ -67,6 +79,12 @@ msgid "%d month"
 msgid_plural "%d months"
 msgstr[0] "%d месец"
 msgstr[1] "%d месеца"
+
+#: main.lua
+msgid "%d new annotation and font & layout from another device"
+msgid_plural "%d new annotations and font & layout from another device"
+msgstr[0] "%d нова анотация и шрифт & оформление от друго устройство"
+msgstr[1] "%d нови анотации и шрифт & оформление от друго устройство"
 
 #: main.lua
 msgid "%d new annotation from another device"
@@ -112,9 +130,18 @@ msgstr[1] "(%d други файла са пропуснати — книгат�
 msgid "(.stignore not written: %s)"
 msgstr "(.stignore не е записан: %s)"
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua syncery_ui/progress_browser/init.lua
+#: syncery_ui/annotation_viewer/viewer_lifted.lua
+#: syncery_ui/progress_browser/init.lua
 msgid "(sync conflict: merge pending)"
 msgstr "(sync-конфликт: предстои обединяване)"
+
+#: main.lua
+msgid "+%d -%d annotations and font & layout from another device"
+msgstr "+%d -%d анотации и шрифт & оформление от друго устройство"
+
+#: main.lua
+msgid "+%d -%d annotations from another device"
+msgstr "+%d -%d анотации от друго устройство"
 
 #: syncery_ui/jump_toast.lua
 msgid ": %s"
@@ -244,7 +271,8 @@ msgstr "Добавяне, управление и почистване на си
 msgid "Backfill, manage, and review your Syncery data."
 msgstr "Попълване, управление и преглед на данните ви в Syncery."
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua syncery_ui/progress_browser/init.lua
+#: syncery_ui/annotation_viewer/viewer_lifted.lua
+#: syncery_ui/progress_browser/init.lua
 msgid "Book"
 msgstr "Книга"
 
@@ -292,7 +320,8 @@ msgstr "Кн≠ "
 msgid "C: "
 msgstr "Цв: "
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua syncery_ui/progress_browser/init.lua
+#: syncery_ui/annotation_viewer/viewer_lifted.lua
+#: syncery_ui/progress_browser/init.lua
 msgid "Cannot find book path."
 msgstr "Пътят до книгата не е намерен."
 
@@ -319,6 +348,10 @@ msgstr "Провери облачните настройки"
 #: syncery_ui/menu/init.lua
 msgid "Check for plugin updates"
 msgstr "Провери за обновления на плъгина"
+
+#: syncery_transports/plugin_sync.lua
+msgid "Checking %d never-opened book(s) for new data..."
+msgstr "Проверка на %d никога неотваряна/и книга/и за нови данни..."
 
 #: syncery_transports/plugin_sync.lua
 msgid "Checking device %d/%d..."
@@ -351,6 +384,14 @@ msgstr "Изчисти филтъра по етикети"
 #: syncery_ui/annotation_viewer/viewer_lifted.lua
 msgid "Clear filter"
 msgstr "Изчисти филтъра"
+
+#: syncery_ui/booklist/actions.lua
+msgid "Clear this book from the prefetch cache"
+msgstr "Изчисти тази книга от кеша за предварително изтегляне"
+
+#: syncery_ui/booklist/actions.lua
+msgid "Cleared."
+msgstr "Изчистено."
 
 #: syncery_ui/menu/transport_section.lua
 msgid "Cloud storage isn't available in this KOReader build."
@@ -390,7 +431,8 @@ msgstr "Неуспешна проверка за обновления."
 msgid "Could not register conflict-file patterns with KOSyncthing+.  Its API may have changed; Syncery still merges conflicts locally, but KOSyncthing+ may count them in its badge."
 msgstr "Шаблоните за конфликтни файлове не можаха да бъдат регистрирани в KOSyncthing+.  Неговото API може да се е променило; Syncery пак слива конфликтите локално, но KOSyncthing+ може да ги брои в значката си."
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua syncery_ui/progress_browser/init.lua
+#: syncery_ui/annotation_viewer/viewer_lifted.lua
+#: syncery_ui/progress_browser/init.lua
 msgid "Could not resolve the sync-conflict."
 msgstr "Не успях да разреша sync-конфликта."
 
@@ -443,10 +485,6 @@ msgstr "Диагностична информация (копирана в кл�
 #: syncery_ui/wizard_presenter.lua
 msgid "Done"
 msgstr "Готово"
-
-#: syncery_transports/plugin_sync.lua
-msgid "Downloading %d/%d..."
-msgstr "Сваляне %d/%d..."
 
 #: syncery_update.lua
 msgid "Downloading update…"
@@ -895,10 +933,6 @@ msgid "Never jump"
 msgstr "Никога не скачай"
 
 #: main.lua
-msgid "New annotations and font & layout from another device"
-msgstr "Нови анотации, шрифт и оформление от друго устройство"
-
-#: main.lua
 msgid "New font & layout from another device"
 msgstr "Нов шрифт и оформление от друго устройство"
 
@@ -956,7 +990,8 @@ msgstr ""
 "\n"
 "Отворете „Транспорти“, за да настроите Syncthing или облачно хранилище, след което „Синхронизирай сега“ може да изпрати промените ви към другите ви устройства."
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua syncery_ui/progress_browser/init.lua
+#: syncery_ui/annotation_viewer/viewer_lifted.lua
+#: syncery_ui/progress_browser/init.lua
 msgid "No sync-conflict copies to resolve."
 msgstr "Няма sync-конфликт копия за разрешаване."
 
@@ -1084,6 +1119,10 @@ msgstr "Налично е обновление на плъгина"
 msgid "Point Statistics and Vocabulary Builder at Syncery's own cloud server, so you set the cloud up once here instead of in each plugin.  This changes those plugins' sync settings; turning it off afterwards leaves the last server in place.  Needs a WebDAV or Dropbox server (FTP cannot sync these databases)."
 msgstr "Насочва „Статистика“ и „Речник“ към собствения облачен сървър на Синери, така че настройваш облака веднъж тук вместо във всеки плъгин.  Това променя sync настройките на тези плъгини; изключването след това оставя последния сървър.  Нужен е WebDAV или Dropbox сървър (FTP не може да синхронизира тези бази данни)."
 
+#: syncery_transports/plugin_sync.lua
+msgid "Prefetching book %d/%d (%s)..."
+msgstr "Изтегляне на книга %d/%d (%s)..."
+
 #: syncery_ui/annotation_viewer/viewer_lifted.lua
 msgid "Preview Fudge: "
 msgstr "Корекция на прегледа: "
@@ -1177,6 +1216,10 @@ msgid "Reload"
 msgstr "Презареди"
 
 #: syncery_ui/booklist/actions.lua
+msgid "Remove the cached, not-yet-applied data for this book? It will be re-downloaded on the next Sync Now if it is still remote-only, or applied normally if you open it before then."
+msgstr "Да се премахнат ли кешираните, все още неприложени данни за тази книга? Ще бъдат свалени наново при следващия Sync Now, ако книгата все още е само отдалечена, или ще се приложат нормално, ако я отвориш преди това."
+
+#: syncery_ui/booklist/actions.lua
 msgid "Remove this book from Syncery on this device"
 msgstr "Премахни тази книга от Syncery на това устройство"
 
@@ -1200,11 +1243,13 @@ msgstr ""
 "\n"
 "Състоянието на четене, оценката и настройките за изобразяване остават. Само данните на това устройство — анотации и напредък — се изчистват; тези от другите ви устройства се запазват."
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua syncery_ui/progress_browser/init.lua
+#: syncery_ui/annotation_viewer/viewer_lifted.lua
+#: syncery_ui/progress_browser/init.lua
 msgid "Resolve"
 msgstr "Разреши"
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua syncery_ui/progress_browser/init.lua
+#: syncery_ui/annotation_viewer/viewer_lifted.lua
+#: syncery_ui/progress_browser/init.lua
 msgid "Resolve conflict"
 msgstr "Разреши конфликта"
 
@@ -1476,9 +1521,14 @@ msgstr ""
 "\n"
 "Полетата са най-зависимата от екрана настройка: удобно поле на телефон е сгрешено на голям четец. Най-добре остави изключено, освен ако устройствата ти имат сходни размери на екрана."
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua syncery_ui/progress_browser/init.lua
+#: syncery_ui/annotation_viewer/viewer_lifted.lua
+#: syncery_ui/progress_browser/init.lua
 msgid "Sync-conflict resolved."
 msgstr "Sync-конфликтът е разрешен."
+
+#: syncery_ui/booklist/init.lua
+msgid "Synced books — %d SDR, %d Synceryhash, %d Pending"
+msgstr "Синхронизирани книги — %d SDR, %d Synceryhash, %d чакащи"
 
 #: _meta.lua main.lua
 msgid "Syncery"
@@ -1584,9 +1634,16 @@ msgstr "Syncery не може да разпознае надеждно тази 
 msgid "Syncery ran into an unexpected error while opening this book."
 msgstr "Syncery срещна неочаквана грешка при отваряне на тази книга."
 
-#: main.lua syncery_ui/annotation_viewer/viewer_lifted.lua syncery_ui/menu/maintenance_section.lua syncery_ui/progress_browser/init.lua syncery_ui/status_panel.lua syncery_ui/status_ui/init.lua syncery_ui/trash/init.lua
+#: main.lua syncery_ui/annotation_viewer/viewer_lifted.lua
+#: syncery_ui/menu/maintenance_section.lua syncery_ui/progress_browser/init.lua
+#: syncery_ui/status_panel.lua syncery_ui/status_ui/init.lua
+#: syncery_ui/trash/init.lua
 msgid "Close"
 msgstr "Затвори"
+
+#: syncery_transports/plugin_sync.lua
+msgid "Syncing %d/%d..."
+msgstr "Синхронизиране %d/%d..."
 
 #: _meta.lua
 msgid "Syncs your full reading state — position, highlights, notes, bookmarks, and book metadata — across devices as plain JSON, carried by Syncthing or cloud storage (Dropbox/WebDAV/FTP)."
@@ -1740,7 +1797,8 @@ msgstr "URL хост: %s"
 msgid "Undo last jump"
 msgstr "Отмени последния скок"
 
-#: main.lua syncery_ui/annotation_viewer/viewer_lifted.lua syncery_ui/progress_browser/init.lua syncery_ui/status_ui/init.lua
+#: main.lua syncery_ui/annotation_viewer/viewer_lifted.lua
+#: syncery_ui/progress_browser/init.lua syncery_ui/status_ui/init.lua
 msgid "Unknown"
 msgstr "Неизвестно"
 
@@ -1875,7 +1933,8 @@ msgstr "Премести в Кошчето"
 msgid "Syncery: could not save changes. Annotations not deleted."
 msgstr "Syncery: промените не можаха да бъдат запазени. Анотациите не са изтрити."
 
-#: main.lua syncery_ui/booklist/actions.lua syncery_ui/menu/per_book_section.lua
+#: main.lua syncery_ui/booklist/actions.lua
+#: syncery_ui/menu/per_book_section.lua
 msgid "Delete all"
 msgstr "Изтрий всички"
 
@@ -1960,6 +2019,10 @@ msgstr "Качване %d/%d..."
 #: syncery_ui/menu/db_sync_section.lua
 msgid "Use Syncery's cloud server"
 msgstr "Използвай облачния сървър на Синери"
+
+#: syncery_ui/menu/init.lua
+msgid "Verbose sync logging"
+msgstr "Подробно логване на синхронизацията"
 
 #: main.lua
 msgid "Vocab & Statistics not synced: enable the Cloud storage+ plugin."
@@ -2056,6 +2119,10 @@ msgstr "Думи за скриване на бележки…"
 #: syncery_ui/annotation_viewer/viewer_lifted.lua
 msgid "Words to hide highlighted text…"
 msgstr "Думи за скриване на маркиран текст…"
+
+#: syncery_ui/menu/init.lua
+msgid "Writes detailed sync events (push/pull decisions, merge results, jump/reload prompts) to debug.txt in the Syncery settings folder — for troubleshooting. Capped at roughly the last 1000 lines. Off by default; turn on only when investigating an issue, takes effect immediately, no restart needed."
+msgstr "Записва подробни събития по синхронизацията (push/pull решения, merge резултати, jump/reload подкани) в debug.txt в папката с настройки на Syncery — за отстраняване на проблеми. Ограничено до около последните 1000 реда. Изключено по подразбиране; включвай само когато разследваш проблем — влиза в сила веднага, без рестарт."
 
 #: syncery_ui/annotation_viewer/viewer_lifted.lua
 msgid "Yesterday"
@@ -2209,7 +2276,11 @@ msgstr ""
 msgid "Migrate"
 msgstr "Мигрирай"
 
-#: main.lua syncery_ui/annotation_viewer/viewer_lifted.lua syncery_ui/booklist/init.lua syncery_ui/booklist/scan.lua syncery_ui/menu/_helpers.lua syncery_ui/menu/annotations_section.lua syncery_ui/menu/maintenance_section.lua syncery_ui/menu/per_book_section.lua syncery_ui/menu/transport_section.lua
+#: main.lua syncery_ui/annotation_viewer/viewer_lifted.lua
+#: syncery_ui/booklist/init.lua syncery_ui/booklist/scan.lua
+#: syncery_ui/menu/_helpers.lua syncery_ui/menu/annotations_section.lua
+#: syncery_ui/menu/maintenance_section.lua syncery_ui/menu/per_book_section.lua
+#: syncery_ui/menu/transport_section.lua
 msgid "Cancel"
 msgstr "Отказ"
 
@@ -2282,7 +2353,9 @@ msgstr ""
 msgid "Enable the master switch first to control this option."
 msgstr "Първо включете главния превключвател, за да управлявате тази опция."
 
-#: syncery_ui/menu/_helpers.lua syncery_ui/menu/annotations_section.lua syncery_ui/menu/maintenance_section.lua syncery_ui/menu/transport_section.lua
+#: syncery_ui/menu/_helpers.lua syncery_ui/menu/annotations_section.lua
+#: syncery_ui/menu/maintenance_section.lua
+#: syncery_ui/menu/transport_section.lua
 msgid "Save"
 msgstr "Запази"
 
@@ -2313,7 +2386,8 @@ msgstr "Първо отворете книга — дълбокото почис
 msgid "Tap to permanently delete the Syncery JSON files for this book."
 msgstr "Докоснете, за да изтриете окончателно JSON файловете на Syncery за тази книга."
 
-#: main.lua syncery_ui/menu/advanced_section.lua syncery_ui/menu/annotations_section.lua syncery_ui/menu/per_book_section.lua
+#: main.lua syncery_ui/menu/advanced_section.lua
+#: syncery_ui/menu/annotations_section.lua syncery_ui/menu/per_book_section.lua
 msgid "No document open."
 msgstr "Няма отворен документ."
 
@@ -2434,7 +2508,8 @@ msgstr "персонализирани"
 msgid "TOC"
 msgstr "съдържание"
 
-#: syncery_ui/menu/annotations_section.lua syncery_ui/menu/transport_section.lua
+#: syncery_ui/menu/annotations_section.lua
+#: syncery_ui/menu/transport_section.lua
 msgid "off"
 msgstr "изкл."
 
@@ -2630,7 +2705,8 @@ msgstr ""
 "\n"
 "Отворете това подменю, за да включите/изключите изцяло синхронизирането на анотации или да управлявате всеки тип поотделно."
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua syncery_ui/menu/annotations_section.lua syncery_ui/wizard.lua
+#: syncery_ui/annotation_viewer/viewer_lifted.lua
+#: syncery_ui/menu/annotations_section.lua syncery_ui/wizard.lua
 msgid "Annotations"
 msgstr "Анотации"
 
@@ -3113,7 +3189,8 @@ msgstr "Неочакван HTTP %d отговор от Syncthing."
 msgid "Next"
 msgstr "Напред"
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua syncery_ui/wizard_presenter.lua
+#: syncery_ui/annotation_viewer/viewer_lifted.lua
+#: syncery_ui/wizard_presenter.lua
 msgid "Back"
 msgstr "Назад"
 
@@ -3164,7 +3241,8 @@ msgstr ""
 "\n"
 "Не се изтриват файлове от облака — само настройката за връзка на това устройство."
 
-#: syncery_ui/annotation_viewer/viewer_lifted.lua syncery_ui/menu/transport_section.lua
+#: syncery_ui/annotation_viewer/viewer_lifted.lua
+#: syncery_ui/booklist/actions.lua syncery_ui/menu/transport_section.lua
 msgid "Clear"
 msgstr "Изчисти"
 
@@ -3364,16 +3442,22 @@ msgstr "Докоснете, за да настроите Dropbox / WebDAV / FTP 
 msgid "never"
 msgstr "никога"
 
-#: syncery_ui/menu/status_section.lua syncery_ui/status_panel.lua syncery_ui/status_section.lua syncery_ui/status_ui/init.lua syncery_ui/trash/init.lua
+#: syncery_ui/menu/status_section.lua syncery_ui/status_panel.lua
+#: syncery_ui/status_section.lua syncery_ui/status_ui/init.lua
+#: syncery_ui/trash/init.lua
 msgid "just now"
 msgstr "току-що"
 
-#: syncery_ui/menu/status_section.lua syncery_ui/status_panel.lua syncery_ui/status_section.lua syncery_ui/status_ui/init.lua syncery_ui/trash/init.lua
+#: syncery_ui/menu/status_section.lua syncery_ui/status_panel.lua
+#: syncery_ui/status_section.lua syncery_ui/status_ui/init.lua
+#: syncery_ui/trash/init.lua
 #, lua-format
 msgid "%d min ago"
 msgstr "преди %d мин"
 
-#: syncery_ui/menu/status_section.lua syncery_ui/status_panel.lua syncery_ui/status_section.lua syncery_ui/status_ui/init.lua syncery_ui/trash/init.lua
+#: syncery_ui/menu/status_section.lua syncery_ui/status_panel.lua
+#: syncery_ui/status_section.lua syncery_ui/status_ui/init.lua
+#: syncery_ui/trash/init.lua
 #, lua-format
 msgid "%d hr ago"
 msgstr "преди %d ч"

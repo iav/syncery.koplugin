@@ -175,13 +175,24 @@ do
     h.assert_true(src:find("self._pending_render_reload = true", 1, true) ~= nil,
         "wiring: an applied render change arms the reload offer (render_applied)")
     -- The bar text names exactly which section(s) changed: annotations-only
-    -- (plural-counted), render-only, or both.
+    -- (plural-counted), render-only, deletion-only, both counts combined
+    -- (compact +N -M), or any of these alongside render -- every branch a
+    -- complete, self-contained (translatable) sentence, never concatenated
+    -- fragments.
     h.assert_true(src:find("%d new annotation from another device", 1, true) ~= nil,
         "text: annotations-only reload message (plural-counted)")
     h.assert_true(src:find("New font & layout from another device", 1, true) ~= nil,
         "text: render-only reload message")
-    h.assert_true(src:find("New annotations and font & layout from another device", 1, true) ~= nil,
-        "text: combined annotations + render reload message")
+    h.assert_true(src:find("%d new annotation and font & layout from another device", 1, true) ~= nil,
+        "text: combined annotations + render reload message (plural-counted)")
+    h.assert_true(src:find("%d annotation deleted on another device", 1, true) ~= nil,
+        "text: deletion-only reload message (plural-counted)")
+    h.assert_true(src:find("%d annotation deleted and font & layout from another device", 1, true) ~= nil,
+        "text: combined deletion + render reload message (plural-counted)")
+    h.assert_true(src:find("+%d -%d annotations from another device", 1, true) ~= nil,
+        "text: compact +added -deleted reload message when both happened")
+    h.assert_true(src:find("+%d -%d annotations and font & layout from another device", 1, true) ~= nil,
+        "text: compact +added -deleted reload message alongside render")
     -- The old notify-coordinator invite is gone (it was a blocking window).
     h.assert_nil(src:find("Notify.notifyInvite", 1, true),
         "dead code: the jump invite no longer uses the notify invite (now the action bar)")

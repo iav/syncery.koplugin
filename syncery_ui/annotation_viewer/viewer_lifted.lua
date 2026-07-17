@@ -51,6 +51,7 @@ local FontList = require("fontlist")
 -- Syncery additions (data layer -> shared state):
 local ViewerSource = require("syncery_ui/annotation_viewer/viewer_source")
 local BookEnum     = require("syncery_ui/annotation_viewer/book_enum")
+local PluginSync   = require("syncery_transports/plugin_sync")
 local G_reader_settings = require("luasettings"):open(require("datastorage"):getSettingsDir() .. "/settings.annotationsviewer.lua")
 local lfs = require("libs/libkoreader-lfs")
 local Font = require("ui/font")
@@ -2579,6 +2580,32 @@ function AllNotesViewer:showAllNotes()
     -- SHARED state, so every note carries device provenance and the list spans
     -- all devices -- not "every book ever opened on this device".
     local books = BookEnum.enumerate()
+
+    -- Cloud prefetch visibility: ViewerSource.notes_for_book already accepts book.annotations_path
+    -- directly and tolerates book.path == nil (confirmed by reading
+    -- viewer_source.lua directly -- its own comment: "the UI already
+    -- guards nil for both"). No plugin instance is threaded into this
+    -- viewer (only `ui`), so Util.state_dir() is called directly here --
+    -- the same no-argument helper main.lua itself uses to set
+    -- plugin.state_dir, not a parallel mechanism.
+    do
+        local Util = require("syncery_util")
+        local fake_plugin = { state_dir = Util.state_dir() }
+        local ok_enum, by_book = pcall(PluginSync.enumerate_prefetch_staging, fake_plugin)
+        if ok_enum and by_book then
+            for book_id, kinds in pairs(by_book) do
+                if kinds.annotations then
+                    local title = PluginSync.extract_title_hint(kinds.progress)
+                    books[#books + 1] = {
+                        path             = nil,
+                        annotations_path = kinds.annotations,
+                        title            = title or book_id,
+                    }
+                end
+            end
+        end
+    end
+
     local notes_list = ViewerSource.notes_for_books(books)
     if #notes_list == 0 then
         UIManager:show(InfoMessage:new{

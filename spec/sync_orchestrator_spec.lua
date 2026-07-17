@@ -677,6 +677,60 @@ end
 
 
 -- ----------------------------------------------------------------------------
+-- Direct unit tests for SyncOrchestrator._count_removed_vs -- the mirror
+-- of _count_added_vs, opposite direction: a GENUINELY just-discovered
+-- peer deletion (this device had it alive before, merge now shows it
+-- deleted), NOT an already-known tombstone carried forward (which must
+-- NOT recount on every subsequent sync, the same perpetual-toast class
+-- of bug _count_added_vs's own tests guard against for additions).
+-- ----------------------------------------------------------------------------
+do
+    local count = Orchestrator._count_removed_vs
+
+    local function alive(ts) return { datetime_updated = ts, deleted = false } end
+    local function tomb(ts)  return { datetime_updated = ts, deleted = true } end
+
+    -- Mixed: one entry genuinely just deleted (alive in before, tombstone
+    -- in merged), one unchanged alive, one entry this device never had
+    -- (absent from before, tombstone in merged -- e.g. a peer deleted
+    -- something before this device ever synced it). Only the genuine,
+    -- just-discovered deletion counts.
+    local before = {
+        a = alive("2026-01-01 00:00:00"),  -- will be deleted -> counts
+        b = alive("2026-01-01 00:00:00"),  -- stays alive -> not counted
+    }
+    local merged = {
+        a = tomb("2026-02-01 00:00:00"),   -- just deleted -> counted
+        b = alive("2026-01-01 00:00:00"),  -- unchanged -> not counted
+        c = tomb("2026-02-01 00:00:00"),   -- never had it alive -> not counted
+    }
+    h.assert_equal(count(merged, before), 1,
+        "_count_removed_vs counts only the genuinely just-deleted entry")
+
+    -- Perpetual-recount guard: an entry ALREADY deleted in `before` (an
+    -- already-known tombstone carried forward from an earlier sync) must
+    -- NOT count again just because it is STILL deleted in `merged`.
+    local before2 = { a = tomb("2026-02-01 00:00:00") }
+    local merged2 = { a = tomb("2026-02-01 00:00:00") }
+    h.assert_equal(count(merged2, before2), 0,
+        "_count_removed_vs does not recount an already-known tombstone "
+        .. "(no perpetual deleted=1 after the first sync that caught it)")
+
+    -- Pure addition: before is empty, merged holds only a fresh alive
+    -- entry -- nothing was removed.
+    h.assert_equal(count({ a = alive("2026-01-01 00:00:00") }, {}), 0,
+        "_count_removed_vs is 0 when nothing was removed, only added")
+
+    -- exclude (per-type filtering) drops a key from the count even
+    -- though it would otherwise qualify.
+    local before3 = { a = alive("2026-01-01 00:00:00") }
+    local merged3 = { a = tomb("2026-02-01 00:00:00") }
+    h.assert_equal(count(merged3, before3, { a = true }), 0,
+        "_count_removed_vs respects the exclude set, same as _count_added_vs")
+end
+
+
+-- ----------------------------------------------------------------------------
 -- Per-type filtering helpers (PER_TYPE_FILTER_DESIGN §15.2)
 -- ----------------------------------------------------------------------------
 

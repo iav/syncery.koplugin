@@ -57,6 +57,7 @@ local _        = I18n.translate
 
 local Scan    = require("syncery_ui/booklist/scan")
 local Actions = require("syncery_ui/booklist/actions")
+local PluginSync = require("syncery_transports/plugin_sync")
 
 
 local BookList = {}
@@ -183,6 +184,28 @@ function BookList.showBookList(plugin)
 
             Trapper:reset()   -- close the InfoMessage cleanly
 
+            -- Cloud prefetch visibility (docs/CLOUD_PREFETCH_DESIGN.md,
+            -- section 4.4): remote-only books, never opened here, cached
+            -- in cloud_staging/prefetch/. Merged in AFTER the dedup above
+            -- (these are never real canonical entries, nothing to dedup
+            -- against) and BEFORE the #books==0 check, so their presence
+            -- correctly suppresses the "no synced books, show picker" path.
+            do
+                local ok_enum, by_book = pcall(PluginSync.enumerate_prefetch_staging, plugin)
+                if ok_enum and by_book then
+                    for book_id, kinds in pairs(by_book) do
+                        local title = PluginSync.extract_title_hint(kinds.progress)
+                        books[#books + 1] = {
+                            is_inbox_only    = true,
+                            book_id          = book_id,
+                            mode             = "pending",
+                            display_name     = title or book_id,
+                            annotations_path = kinds.annotations or kinds.progress,
+                        }
+                    end
+                end
+            end
+
             if cancelled and #books == 0 then
                 UIManager:show(InfoMessage:new{
                     text = _("Scan cancelled."), timeout = 2 })
@@ -251,10 +274,11 @@ end
 
 function BookList.displayBookMenu(plugin, books)
     local item_table = {}
-    local sdr_count, hash_count = 0, 0
+    local sdr_count, hash_count, pending_count = 0, 0, 0
     for __, book in ipairs(books) do
         if book.mode == "sdr" then sdr_count = sdr_count + 1
-        elseif book.mode == "hash" then hash_count = hash_count + 1 end
+        elseif book.mode == "hash" then hash_count = hash_count + 1
+        elseif book.mode == "pending" then pending_count = pending_count + 1 end
     end
 
     -- Bulk migration at top
@@ -298,7 +322,10 @@ function BookList.displayBookMenu(plugin, books)
     end
 
     local menu = Menu:new{
-        title = string.format(_("Synced books — %d SDR, %d Synceryhash"), sdr_count, hash_count),
+        title = pending_count > 0
+            and string.format(_("Synced books — %d SDR, %d Synceryhash, %d Pending"),
+                sdr_count, hash_count, pending_count)
+            or string.format(_("Synced books — %d SDR, %d Synceryhash"), sdr_count, hash_count),
         item_table = item_table,
         width = Screen:getWidth(),
         height = Screen:getHeight(),

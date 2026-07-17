@@ -102,12 +102,19 @@ end
 --- Run the flush sequence with the given opts.
 --- @param opts table?
 function Lifecycle:teardown(opts)
+    opts = opts or {}
+    if _G.SYNCERY_DEBUG_LOG then
+        _G.SYNCERY_DEBUG_LOG.teardown_entry(opts.destroying, opts.suspend)
+    end
     Teardown.flush(self._plugin, self._ui_manager,
-                   self._util_now, self._logger, opts or {})
+                   self._util_now, self._logger, opts)
     -- notify schedules off-slot (its own scheduleIn), so Teardown's Step-5
     -- cancel_all does not reach it.  Stop the toast queue here so a pending
     -- auto-dismiss or gap-drain can't fire onto the next screen after close.
     Notify.stopAll()
+    if _G.SYNCERY_DEBUG_LOG and opts.destroying then
+        _G.SYNCERY_DEBUG_LOG.session_end()
+    end
 end
 
 
@@ -130,6 +137,9 @@ end
 --- keep the transport stack and the plugin object alive across suspend rather
 --- than tearing down, so on_resume has something to work with.
 function Lifecycle:on_suspend()
+    if _G.SYNCERY_DEBUG_LOG then
+        _G.SYNCERY_DEBUG_LOG.lifecycle_event("on_suspend", nil)
+    end
     self:teardown{ suspend = true }
 end
 
@@ -167,6 +177,10 @@ function Lifecycle:on_resume(tries_left)
     local plugin = self._plugin
     if plugin.destroyed then return end
 
+    if _G.SYNCERY_DEBUG_LOG then
+        _G.SYNCERY_DEBUG_LOG.lifecycle_event("on_resume", tostring(tries_left))
+    end
+
     -- Arm the jump window IMMEDIATELY on the first resume tick, BEFORE the
     -- reconnect polling below: the baseline snapshot must predate any
     -- post-wake autosave -- taken later it would hide a peer that advanced
@@ -202,6 +216,9 @@ function Lifecycle:on_resume(tries_left)
         -- (first attempt can actually land soon), codex r5.
         local pull_expected = plugin._isCloudPullReady and plugin:_isCloudPullReady()
         local pull_prompt   = plugin._isCloudPullPrompt and plugin:_isCloudPullPrompt()
+        if _G.SYNCERY_DEBUG_LOG then
+            _G.SYNCERY_DEBUG_LOG.resume_online_branch(pull_expected, pull_prompt)
+        end
         if pull_expected then
             self:schedule("_open_cloud_pull", 1.0, function()
                 if plugin.destroyed then return end
@@ -222,6 +239,9 @@ function Lifecycle:on_resume(tries_left)
     -- Offline — WiFi still reconnecting.  Re-probe shortly, bounded so a wake
     -- with no network ever returning does not poll forever.
     tries_left = tries_left or RESUME_RECHECK_MAX_TRIES
+    if _G.SYNCERY_DEBUG_LOG then
+        _G.SYNCERY_DEBUG_LOG.resume_offline_branch(tries_left)
+    end
     if tries_left <= 0 then return end
     self:schedule("_resume_recheck_action", RESUME_RECHECK_POLL_DELAY, function()
         self:on_resume(tries_left - 1)
@@ -233,6 +253,9 @@ end
 --- non-destroying teardown: flush persisted state, but the plugin
 --- survives (no transport shutdown, destroyed stays false).
 function Lifecycle:on_power_off()
+    if _G.SYNCERY_DEBUG_LOG then
+        _G.SYNCERY_DEBUG_LOG.lifecycle_event("on_power_off", nil)
+    end
     self:teardown{}
 end
 
@@ -240,6 +263,9 @@ end
 --- onQuit — KOReader process exiting.  Strongest teardown: full
 --- destroying flush + transport shutdown.
 function Lifecycle:on_quit()
+    if _G.SYNCERY_DEBUG_LOG then
+        _G.SYNCERY_DEBUG_LOG.lifecycle_event("on_quit", nil)
+    end
     self:teardown{
         destroying       = true,
     }
@@ -314,8 +340,13 @@ end
 --- os.time() that _doJump uses to set the window).
 function Lifecycle:schedule_auto_save()
     local plugin = self._plugin
-    if plugin.destroyed or plugin.blocking_autosave
-            or (plugin.blocking_autosave_until or 0) > self._util_now() then
+    local blocked = plugin.destroyed or plugin.blocking_autosave
+            or (plugin.blocking_autosave_until or 0) > self._util_now()
+    if _G.SYNCERY_DEBUG_LOG then
+        _G.SYNCERY_DEBUG_LOG.autosave_scheduled(
+            blocked, plugin.destroyed, plugin.blocking_autosave, plugin.blocking_autosave_until)
+    end
+    if blocked then
         return
     end
 
@@ -324,9 +355,13 @@ function Lifecycle:schedule_auto_save()
         -- idle between arm and fire should still suppress the save. The
         -- window is re-checked too — it may have been (re)armed by a jump
         -- between this timer's arm and its fire.
-        if plugin.sync_state == "idle"
+        local fire_ok = plugin.sync_state == "idle"
                 and not plugin.blocking_autosave
-                and (plugin.blocking_autosave_until or 0) <= self._util_now() then
+                and (plugin.blocking_autosave_until or 0) <= self._util_now()
+        if _G.SYNCERY_DEBUG_LOG then
+            _G.SYNCERY_DEBUG_LOG.autosave_fired(fire_ok, plugin.sync_state, plugin.blocking_autosave)
+        end
+        if fire_ok then
             plugin:_autoSave(true)
         end
     end)
