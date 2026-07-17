@@ -526,6 +526,43 @@ function impl.prefetch_candidates_found(count)
     emit(string.format("Syncery[DEBUG] prefetch_candidates_found count=%d", count))
 end
 
+-- apply_staged_prefetch: entry guards. safe_id/file_type_synced both being
+-- true is required for the migration to even attempt anything -- if either
+-- is false, the function bails out immediately and the prefetch-staged
+-- files are NEVER moved, remaining in cloud_staging/prefetch/ forever
+-- (which is exactly what would make a Booklist/Progress Browser/Annotation
+-- Browser row never disappear).
+function impl.apply_staged_prefetch_entry(book_id, book_file, safe_id, file_type_synced)
+    emit(string.format(
+        "Syncery[DEBUG] apply_staged_prefetch_entry book_id=%s book_file=%s safe_id=%s file_type_synced=%s",
+        tostring(book_id), tostring(book_file), tostring(safe_id), tostring(file_type_synced)))
+end
+
+-- apply_staged_prefetch: per-kind (progress/annotations) decision. The move
+-- only happens when sync_enabled=true, dst_path is non-nil, dst does NOT
+-- already exist, and src DOES exist. dst_exists=true means the migration
+-- is silently skipped for THIS kind on THIS call (canonical already has
+-- something there) -- src stays in prefetch/ untouched in that case, which
+-- would also explain a persistent stale row if this keeps happening on
+-- every open.
+function impl.apply_staged_prefetch_kind_check(book_id, kind, sync_enabled, has_dst_path, dst_exists, src_exists)
+    emit(string.format(
+        "Syncery[DEBUG] apply_staged_prefetch_kind_check book_id=%s kind=%s sync_enabled=%s has_dst_path=%s dst_exists=%s src_exists=%s",
+        tostring(book_id), tostring(kind), tostring(sync_enabled),
+        tostring(has_dst_path), tostring(dst_exists), tostring(src_exists)))
+end
+
+-- apply_staged_prefetch: final outcome for this call. Both false means
+-- nothing was migrated this time -- if the prefetch files are STILL in
+-- cloud_staging/prefetch/ after this consistently (check
+-- apply_staged_prefetch_kind_check's src_exists on the NEXT open of the
+-- same book), that is the confirmed root cause of a row that never clears.
+function impl.apply_staged_prefetch_result(book_id, applied_progress, applied_annotations)
+    emit(string.format(
+        "Syncery[DEBUG] apply_staged_prefetch_result book_id=%s applied_progress=%s applied_annotations=%s",
+        tostring(book_id), tostring(applied_progress), tostring(applied_annotations)))
+end
+
 --- sync_all: per-candidate, per-kind staleness check -- does the staged
 --- prefetch copy's size already match the listing's reported size (skip),
 --- or does it need a fresh download (stale)?
