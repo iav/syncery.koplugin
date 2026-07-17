@@ -1,5 +1,72 @@
 # Changelog
 
+## [v1.2.0] — 2026-07-17
+
+### Added
+- **Cloud prefetch.** Sync Now now discovers books your other devices have
+  synced but you have never opened here, and stages their progress and
+  annotations ahead of time. They show up immediately in the Progress
+  Browser, Booklist, and Annotation Browser — the moment you actually open
+  one, its synced state is already there, not fetched from scratch.
+- **Cloud Sync-All.** *Sync Now* used to push/pull only the book you had
+  open. It now covers your whole library in one pass — every book with a
+  pending change goes out, and every book a peer changed comes in — using a
+  lightweight per-device manifest so it doesn't have to check every book's
+  full content to know what changed.
+- **Open-moment pull + jump prompt.** Opening a book now checks the cloud
+  right away (a few seconds after load) instead of waiting for the next
+  save. If a peer left off further ahead, the jump prompt can appear on the
+  very first check. (PR #12 by iav)
+- **Deletion-aware reload prompts.** Deleting an annotation on one device
+  now offers the same "tap to reload" invitation on others that a *new*
+  annotation already did — previously, a deletion updated things silently
+  and only became visible after you closed and reopened the book yourself.
+  When both new and deleted annotations arrive together, the bar shows a
+  compact `+N -M` count.
+- **Verbose sync logging** (Advanced, under *Copy diagnostic info*, off by
+  default). Writes detailed push/pull decisions, merge results, and
+  jump/reload events to `debug.txt` in Syncery's settings folder, capped at
+  roughly the last 1000 lines — for troubleshooting sync issues without
+  digging through the full `crash.log`. Takes effect immediately, no
+  restart needed.
+- **Wake Wi-Fi for a cloud push on close** (opt-in). Optionally pushes your
+  last reading position on suspend too, not just on close. (PR #7 by iav)
+- **Custom Syncthing host.** The Syncthing GUI host was previously fixed to
+  `127.0.0.1`; it's now configurable under *Transports → Configure
+  Syncthing…*, for setups where the daemon isn't reachable on loopback.
+- **Force terminal Syncthing scan past backoff at close/quit.** Ensures the
+  last changes are picked up by Syncthing before shutdown, rather than
+  being delayed by scan backoff. (PR #8 by iav)
+- **Last-read time** now carries
+  onto the book's `atime` on sync, instead of only the progress percentage
+  moving. (PR #14 by iav)
+
+### Fixed
+- A same-page jump prompt (peer at the same position, no real progress
+  difference) no longer appears — this previously caused a back-and-forth
+  jump prompt oscillation between two devices reading in lockstep.
+  (PR #12 by iav)
+- Fixed a cloud sync race condition that could occur right at book open,
+  and a related one in `pushOpenedBooks`' failure handling that could leave
+  a book's push state inconsistent after a transient error.
+- Fixed WebDAV folder-listing filtering so unsupported/system entries no
+  longer interfere with book discovery.
+- Fixed a bug where a book moved between storage locations could leave a
+  stale cross-device reference behind.
+- Fixed a cache-key bug where Syncery could silently skip pushing a
+  genuinely changed book after an unrelated book's push, or — more
+  seriously — could skip checking the cloud for a peer's update at all
+  once its own content looked unchanged (only the book you had open was
+  affected; the fix makes the skip opt-in, used only where it's actually
+  safe).
+- Fixed a false "font & layout changed" notification that could appear on
+  the very first sync of a book between two devices with different
+  default fonts, even when neither device had ever customized anything —
+  the comparison now falls back to each device's own live rendering
+  default instead of assuming a difference.
+- Fixed the relative-time display in the jump/undo action bar and status
+  section (e.g. "5 minutes ago" instead of a raw timestamp).
+
 ## [v1.1.2] — 2026-06-30
 
 ### Bugfix
