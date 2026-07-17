@@ -2,9 +2,9 @@
 
 <img src="assets/syncery.svg" alt="Syncery" />
 
-[![Release](https://img.shields.io/badge/release-v1.1.2-blue)](https://github.com/d0nizam/syncery.koplugin/releases)
+[![Release](https://img.shields.io/badge/release-v1.2.0-blue)](https://github.com/d0nizam/syncery.koplugin/releases)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-blue)](LICENSE)
-![Tests](https://img.shields.io/badge/tests-123%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-133%20passing-brightgreen)
 
 **Cross-device reading progress, annotations, metadata, and render-settings sync for KOReader.**
 
@@ -50,6 +50,7 @@ Syncery keeps your reading life in step across every KOReader device — self-ho
 - **Your files, your transport** — everything travels as plain JSON over **Syncthing** (direct device-to-device) or your own **cloud** (Dropbox / WebDAV / FTP). 
 - **Nothing lost when devices disagree** — edits made on different devices merge instead of overwriting each other. The one case that can truly clash — marking a book *Finished* on one device and *On hold* on another — is surfaced for you to resolve, never dropped silently.
 - **Works offline** — changes sync whenever your devices next reconnect; a device that's been offline for weeks keeps its place.
+- **Whole-library Sync Now** — one tap pushes and pulls every book with a pending change, not just the one you have open, and discovers books your other devices have synced that you've never opened here — their progress and annotations are prefetched, so they're ready the moment you do.
 - **Reading statistics & vocabulary** — automatically trigger KOReader's built-in Statistics and Vocabulary Builder plugins to sync their databases over your cloud storage, using the same periodic schedule. Syncery triggers the sync; the plugins handle the merge themselves.
 - **See everything in one place** — a **Progress Browser** shows how far each device has read in every book (and jumps you to any of them), and an **Annotation Browser** gathers all your highlights and notes across your whole library.
 
@@ -245,12 +246,13 @@ Syncery                                         ← top-level entry in ☰ → T
 │   ├── Remove orphaned sync files…
 │   ├── Recent sync activity
 │   ├── Syncthing ▸                             ← Rescan all Syncthing folders · KOSyncthing+ integration status…
-│   ├── Cloud ▸                                 ← cloud maintenance · Clean cloud upload staging
-│   └── Copy diagnostic info
+│   └── Cloud ▸                                 ← cloud maintenance · Clean cloud upload staging
 │
 ├── Advanced ▸
 │   ├── Storage mode: Book metadata folder (SDR) / Synceryhash   (+ Migrate all books to this storage mode…)
 │   ├── This device: rename · Show QR code
+│   ├── Copy diagnostic info
+│   ├── Verbose sync logging                    ← off by default; writes detailed sync events to debug.txt for troubleshooting
 │   ├── Book data save interval
 │   └── Delete and reset ▸                      ← Deep clean – permanently erase all book data… · Reset all Syncery settings…
 │
@@ -495,6 +497,7 @@ All settings persist in KOReader's `G_reader_settings` under `syncery_*` keys:
 | `syncery_device_label` | string | hostname | Human-readable device name |
 | `syncery_device_id` | string | fallback | Self-generated id, used only when KOReader's `device_id` is unavailable |
 | `syncery_firstrun_done` | bool | — | First-run wizard completed |
+| `syncery_debug_logging` | bool | `false` | Verbose sync logging to `debug.txt` (Advanced) |
 
 The jump thresholds (`percent_epsilon`, `sync_trigger_delta`) are internal
 `jump_policy` constants, not persisted settings. A few additional internal keys
