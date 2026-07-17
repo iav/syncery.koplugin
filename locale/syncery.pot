@@ -26,6 +26,18 @@ msgstr ""
 msgid " (phrase)"
 msgstr ""
 
+#: main.lua
+msgid "%d annotation deleted and font & layout from another device"
+msgid_plural "%d annotations deleted and font & layout from another device"
+msgstr[0] ""
+msgstr[1] ""
+
+#: main.lua
+msgid "%d annotation deleted on another device"
+msgid_plural "%d annotations deleted on another device"
+msgstr[0] ""
+msgstr[1] ""
+
 #: syncery_migration/storage_mode.lua
 msgid "%d book already in the new location."
 msgid_plural "%d books already in the new location."
@@ -65,6 +77,12 @@ msgstr ""
 #: syncery_ui/jump_toast.lua
 msgid "%d month"
 msgid_plural "%d months"
+msgstr[0] ""
+msgstr[1] ""
+
+#: main.lua
+msgid "%d new annotation and font & layout from another device"
+msgid_plural "%d new annotations and font & layout from another device"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -115,6 +133,14 @@ msgstr ""
 #: syncery_ui/annotation_viewer/viewer_lifted.lua
 #: syncery_ui/progress_browser/init.lua
 msgid "(sync conflict: merge pending)"
+msgstr ""
+
+#: main.lua
+msgid "+%d -%d annotations and font & layout from another device"
+msgstr ""
+
+#: main.lua
+msgid "+%d -%d annotations from another device"
 msgstr ""
 
 #: syncery_ui/jump_toast.lua
@@ -837,10 +863,6 @@ msgstr ""
 
 #: syncery_ui/menu/annotations_section.lua
 msgid "Never jump"
-msgstr ""
-
-#: main.lua
-msgid "New annotations and font & layout from another device"
 msgstr ""
 
 #: main.lua
